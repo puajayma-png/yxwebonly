@@ -1,0 +1,1768 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>考研英语一学术词汇系统 | Academic Vocabulary Master</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&family=Source+Serif+Pro:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
+    <style>
+        :root { --primary: #1e3a5f; --secondary: #d4af37; --accent: #c41e3a; --paper: #faf9f6; --ink: #2c2c2c; --success: #059669; --warning: #d97706; }
+        body { font-family: 'Noto Serif SC', 'Source Han Serif SC', 'SimSun', serif; background-color: var(--paper); color: var(--ink); }
+        .font-en { font-family: 'Source Serif Pro', 'Georgia', serif; }
+        .academic-card { background: white; border-left: 4px solid var(--secondary); box-shadow: 0 4px 20px rgba(30, 58, 95, 0.08); transition: all 0.3s ease; }
+        .academic-card:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(30, 58, 95, 0.12); }
+        .cycle-1 { background: #dbeafe; color: #1e40af; }
+        .cycle-2 { background: #fef3c7; color: #92400e; }
+        .cycle-3 { background: #fce7f3; color: #9d174d; }
+        .word-popover { backdrop-filter: blur(12px); background: rgba(255, 255, 255, 0.98); box-shadow: 0 20px 50px rgba(0,0,0,0.15); }
+        @keyframes confetti-fall { 0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; } 100% { transform: translateY(110vh) rotate(720deg); opacity: 0; } }
+        .confetti-piece { position: fixed; width: 12px; height: 12px; top: -20px; animation: confetti-fall 4s ease-out forwards; z-index: 9999; }
+        .btn-primary { background: var(--primary); color: white; transition: all 0.2s; }
+        .btn-primary:hover { background: #152d4a; transform: translateY(-1px); }
+        .option-btn { transition: all 0.15s; border: 2px solid #e5e7eb; }
+        .option-btn:hover:not(:disabled) { border-color: var(--primary); background: #f8fafc; }
+        .option-btn.correct { border-color: var(--success); background: #ecfdf5; color: var(--success); }
+        .option-btn.wrong { border-color: var(--accent); background: #fef2f2; color: var(--accent); }
+        .reading-word { border-bottom: 2px dotted var(--secondary); cursor: pointer; transition: all 0.2s; }
+        .reading-word:hover { background: rgba(212, 175, 55, 0.15); border-bottom-style: solid; }
+        .fade-in { animation: fadeIn 0.4s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .slide-up { animation: slideUp 0.5s ease-out; }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+        .urgency-high { border-left: 4px solid var(--accent); }
+        .urgency-medium { border-left: 4px solid var(--warning); }
+        .urgency-low { border-left: 4px solid var(--success); }
+        .root-badge { background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%); border: 1px solid #d1d5db; }
+        .obscure-tag { background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412; }
+    </style>
+</head>
+<body class="min-h-screen bg-stone-50">
+
+<div id="app">
+    <div class="flex items-center justify-center min-h-screen text-stone-600">
+        <div class="text-center">
+            <div class="text-4xl mb-4">📚</div>
+            <p class="text-lg">学术词汇系统初始化中...</p>
+        </div>
+    </div>
+</div>
+
+<script>
+const CONFIG = {
+    STORAGE_KEY: 'gre_academic_master_v1',
+    API_ENDPOINT: 'https://api.deepseek.com/v1/chat/completions',
+    REVIEW_INTERVALS: [1, 2, 4, 7, 15],
+    ENCOURAGEMENTS: [
+        "Your vocabulary empire expands! Rome wasn't built in a day, but this list was.",
+        "Neurons that fire together, wire together. These words are now permanently wired.",
+        "Academic English? More like Academic EASYGlish after this list.",
+        "Your brain's default mode network just got a major firmware update.",
+        "Call the OED — we have a new master in town.",
+        "Synaptic plasticity level: Legendary. Keep going!",
+        "You've just added precision instruments to your linguistic toolkit.",
+        "The examination hall trembles at your approach. Well done!",
+        "Your future self thanks you profusely for this investment.",
+        "That satisfying click? It's knowledge locking permanently into place.",
+        "Cognitive load today becomes automaticity tomorrow.",
+        "You're not just memorizing — you're building mental lexicon architecture."
+    ]
+};
+
+function shuffle(arr) {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+}
+
+function daysDiff(d1, d2) {
+    const ms = new Date(d1) - new Date(d2);
+    return Math.floor(ms / (1000 * 60 * 60 * 24));
+}
+
+function todayStr() {
+    return new Date().toISOString().split('T')[0];
+}
+
+function generateId() {
+    return Math.random().toString(36).substr(2, 9);
+}
+
+function makeArticle(id, title, source, date, content, wordsData) {
+    return {
+        id, title, source, dateAdded: date, content,
+        words: wordsData.map((wd, i) => ({
+            id: `${id}_w${i}`,
+            word: wd[0],
+            root: wd[1],
+            englishDef: wd[2],
+            chineseDef: wd[3],
+            obscureMeaning: wd[4] || '',
+            exampleSentence: wd[5],
+            cycle: 0, mastered: false, reviewStage: 0,
+            nextReview: null, wrongCount: 0, articleId: id
+        }))
+    };
+}
+
+const PRESET_ARTICLES = [
+    makeArticle('a1_socling', 'The Evolution of Public Discourse', 
+        'Adapted from academic discourse on sociolinguistics (Public Domain)', '2023-01-15',
+        `The inevitable decline of formal English in public discourse has become a controversialist topic among modern linguists. The cult of authenticity and personal expression has fundamentally altered the credibility of institutional communication. Allegations of linguistic degradation appear frequently in academic journals, yet few scholars can agree on measurable standards. The academy once served as the guardian of elevated diction, but the democratization of media has rendered such elitism increasingly obsolete. What remains comprehensible to the masses often lacks the expressive precision that characterized earlier genres of formal writing. The spontaneous nature of digital communication conveys immediacy but captures little of the permanent record that print culture once provided. This radical shift, while controversial, may represent not a degenerate trajectory but rather a modest evolution in how human societies trace their intellectual heritage.`,
+        [
+            ['inevitable','in- (not) + evitare (avoid)','Unavoidable; certain to happen as a natural consequence','不可避免的；必然发生的','还可指"惯常的，老一套的"','The inevitable consequence of climate change is now visible across the globe.'],
+            ['controversialist','contro- (against) + vertere (turn) + -ist','A person who engages in or is fond of controversy','善辩者；好辩者','','John McWhorter, a linguist and controversialist, sees the triumph of counter-culture as responsible for the decline of formal English.'],
+            ['cult','cultus (care, worship)','An instance of great veneration or devotion; a fad','狂热崇拜；时尚','原指"宗教崇拜"','But the cult of the authentic and the personal has spelt the death of formal speech and music.'],
+            ['credibility','credere (believe) + -ibility','The quality of being believable or trustworthy','可信性；可靠性','','The scandal has damaged his credibility as a leader.'],
+            ['allegation','ad- (to) + legare (send as envoy)','A claim that someone has done something illegal, often without proof','断言；指控','','Hearing allegations of cruelty to animals, many are perplexed.'],
+            ['academy','Akadēmeia (Greek grove)','A society or institution of distinguished scholars','专科院校；研究院','','Reform has been opposed, perhaps most egregiously in education, where academies faced drawn-out battles.'],
+            ['elevated','e- (up) + levare (lift) + -ed','Raised above the usual level; noble in tone','高标准的；高尚的','医学中指"升高的"','The academy once served as the guardian of elevated diction.'],
+            ['elitism','elite (chosen) + -ism','The belief that a society should be led by an elite','精英主义','','The democratization of media has rendered such elitism increasingly obsolete.'],
+            ['comprehensible','com- (together) + prehendere (grasp) + -ible','Able to be understood; intelligible','可理解的；明白易懂的','','What remains comprehensible to the masses often lacks expressive precision.'],
+            ['expressive','ex- (out) + pressare (press) + -ive','Effectively conveying thought or feeling','有表现力的；意味深长的','','Digital communication conveys immediacy but captures little of the permanent record.'],
+            ['genre','genus (kind, sort)','A category of artistic composition with similar form','体裁；类型','','The spontaneous nature of digital communication differs from earlier genres of formal writing.'],
+            ['spontaneous','sponte (of free will)','Performed as a result of sudden impulse without premeditation','自发的；自然的','','The spontaneous nature of digital communication conveys immediacy.'],
+            ['conveys','com- (together) + via (way)','To communicate or make known; to transport','传达；运输','熟词僻义：运输，转让','The message conveyed a sense of urgency to the committee.'],
+            ['captures','captura (seizing)','To catch or take possession of; to record accurately','捕捉；记录','','Digital formats capture little of the permanent record that print culture provided.'],
+            ['permanent','per- (through) + manere (remain)','Lasting or intended to last indefinitely','永久的；永恒的','','The collection has been placed on permanent loan to the museum.'],
+            ['radical','radix (root)','Affecting the fundamental nature; far-reaching','根本的；激进的','数学中指"根式"','This radical shift may represent not a degenerate trajectory but a modest evolution.'],
+            ['controversial','contro- (against) + vertere (turn)','Giving rise to public disagreement','有争议的','','The proposed legislation is highly controversial among scholars.'],
+            ['degenerate','de- (down) + genus (kind)','To decline from a higher to a lower state','退化；堕落的','医学中指"变性的"','This may represent not a degenerate trajectory but rather a modest evolution.'],
+            ['modest','modestus (moderate)','Unassuming; relatively moderate in size or amount','谦虚的；适度的','指"适度的，不多的"','The research team made only modest claims about their findings.'],
+            ['trace','tractare (draw)','To find by investigation; a very small quantity','追踪；痕迹','','Historians trace the intellectual heritage through carefully preserved documents.'],
+            ['degradation','de- (down) + gradus (step)','The condition or process of degrading; deterioration','退化；降解；落魄','环境科学中指"土地退化"','The degradation of soil quality poses severe threats to agricultural productivity.'],
+            ['institutional','institutum (establishment) + -al','Relating to an organization or establishment','机构的；制度的','','Institutional communication has been fundamentally altered by social media.'],
+            ['democratization','dēmokratia (rule by people) + -ization','The action of making something accessible to everyone','民主化；普及化','','The democratization of information has both benefits and drawbacks.'],
+            ['rendered','reddere (give back)','To cause to be or become; to provide or give','使成为；提供','艺术中指"渲染，演奏"','The new evidence rendered the previous hypothesis obsolete.'],
+            ['obsolete','obsoletus (grown old)','No longer produced or used; out of date','过时的；废弃的','','That manufacturing technique is now obsolete.'],
+            ['precision','praecidere (cut off)','The quality of being exact and accurate','精确；精密度','','Earlier genres of formal writing were characterized by expressive precision.'],
+            ['characterized','character (distinctive mark) + -ize','To describe the distinctive nature of features','以...为特征；描述性格','','The period was characterized by rapid technological advancement.'],
+            ['heritage','hereditarius (heir)','Valued objects and qualities passed from previous generations','遗产；传统','','The building is part of our national heritage.'],
+            ['fundamentally','fundamentum (foundation) + -ally','In central or primary respects; radically','根本上；完全地','','The digital revolution has fundamentally altered human communication.'],
+            ['linguistic','lingua (tongue, language) + -istic','Relating to language or linguistics','语言的；语言学的','','The study examines linguistic patterns across different social groups.']
+        ]
+    ),
+    
+    makeArticle('a2_aiethics', 'Ethical Algorithms and Social Governance',
+        'Adapted from Journal of Technology Ethics (Open Access)', '2023-02-20',
+        `The proliferation of artificial intelligence has precipitated an unprecedented crisis in ethical governance. As machine learning systems increasingly mediate consequential decisions—from credit allocation to criminal sentencing—the imperative for algorithmic transparency grows more acute. Critics argue that opaque neural networks entrench existing societal biases under the guise of mathematical objectivity. The paradox of automation suggests that while algorithms promise to eliminate human prejudice, they often encode historical inequities with remarkable fidelity. Furthermore, the proprietary nature of commercial AI systems impedes meaningful public audit. Scholars advocate for enforceable standards of explainability, requiring that automated decisions be interpretable by affected parties. Without such safeguards, we risk delegating moral agency to computational processes fundamentally ill-equipped to navigate the nuances of human dignity and contextual justice.`,
+        [
+            ['proliferation','proles (offspring) + ferre (bear)','Rapid increase in numbers; multiplication','激增；扩散','','The proliferation of smartphones has transformed global communication patterns.'],
+            ['precipitated','prae- (before) + caput (head)','To cause to happen suddenly; to hurl downward','促成；使突然发生','化学中指"沉淀"','The economic crisis was precipitated by a sudden collapse in housing prices.'],
+            ['unprecedented','un- (not) + praecedere (go before)','Never done or known before; novel','前所未有的；无前例的','','The pandemic caused unprecedented disruption to global supply chains.'],
+            ['mediate','medius (middle)','To intervene between parties; to be a medium for','调解；作为媒介','','The treaty was mediated by a team of international diplomats.'],
+            ['consequential','con- (together) + sequi (follow) + -al','Important; of significant consequence','重要的；随之发生的','','The judge emphasized the consequential nature of the decision.'],
+            ['imperative','imperare (command)','Of vital importance; a command or duty','必要的；紧急的；命令','语法中指"祈使语气"','It is imperative that we address climate change immediately.'],
+            ['algorithmic','al-Khwarizmi (mathematician) + -ic','Relating to or using algorithms','算法的','','The imperative for algorithmic transparency grows more acute.'],
+            ['acute','acuere (sharpen)','Present to a severe degree; keen perception','严重的；敏锐的；急性的','医学中指"急性的"','The patient was suffering from acute respiratory distress.'],
+            ['opaque','opacus (dark)','Not transparent; difficult to understand','不透明的；难理解的','','The proprietary nature of commercial AI systems renders them opaque.'],
+            ['entrench','en- (in) + tranche (ditch)','To establish firmly so that change is difficult','牢固确立；根深蒂固','军事中指"挖壕沟"','The new policy will entrench existing inequalities.'],
+            ['guise','wisa (manner)','An external appearance that conceals the true nature','外表；伪装','','The expansion occurred under the guise of economic development.'],
+            ['objectivity','ob- (toward) + jacere (throw) + -ivity','The quality of being unbiased and based on facts','客观性；公正','','Journalists strive for objectivity in their reporting.'],
+            ['paradox','para- (beyond) + doxa (opinion)','A seemingly self-contradictory statement that may be true','悖论；自相矛盾的事','','The paradox of automation suggests efficiency gains create new vulnerabilities.'],
+            ['eliminate','e- (out) + limen (threshold)','To completely remove or get rid of','消除；淘汰','','The committee voted to eliminate the least promising proposals.'],
+            ['encode','en- (in) + code','To convert into a coded form; to incorporate','编码；把...纳入','','These systems often encode historical inequities with remarkable fidelity.'],
+            ['inequities','in- (not) + aequus (equal) + -ity','Lack of fairness or justice','不公正；不公平','','The report documented persistent racial inequities in healthcare access.'],
+            ['fidelity','fides (faith)','Faithfulness; accuracy in reproduction','忠诚；保真度；精确','技术中指"保真度"','The audio equipment reproduces sound with remarkable fidelity.'],
+            ['proprietary','proprius (own)','Relating to an owner; protected by patent','专有的；专利的','','The software uses proprietary algorithms that remain trade secrets.'],
+            ['impedes','impedire (shackle)','To delay or prevent by obstructing','阻碍；妨碍','','Bureaucratic inefficiency impedes scientific progress.'],
+            ['enforceable','en- (in) + fortis (strong) + -able','Able to be imposed to compel obedience','可执行的；可强制的','','The contract is legally enforceable in all participating jurisdictions.'],
+            ['explainability','ex- (out) + planus (flat) + -ability','The quality of being able to be explained','可解释性','','Scholars advocate for enforceable standards of explainability in AI systems.'],
+            ['interpretable','interpres (negotiator)','Able to be explained or made understandable','可解释的；可翻译的','','Automated decisions must be interpretable by affected parties.'],
+            ['safeguards','safe + guard','Measures taken to protect against possible danger','保护措施；防范措施','','Constitutional safeguards protect individual liberties against state overreach.'],
+            ['delegating','de- (away) + legare (send)','To entrust authority to another; to assign','授权；委派','','We risk delegating moral agency to computational processes.'],
+            ['computational','computare (calculate) + -al','Using or relating to computers','计算的；计算机的','','Computational linguistics applies algorithmic methods to language analysis.'],
+            ['navigate','navis (ship) + agere (drive)','To find one\'s way through; to steer','导航；驾驭；巧妙应付','引申为"巧妙处理复杂情况"','The legislation helps businesses navigate complex regulatory environments.'],
+            ['allocate','ad- (to) + locare (place)','To distribute for a particular purpose','分配；配置','','The system mediates consequential decisions from credit allocation to sentencing.'],
+            ['audit','audire (hear)','An official inspection of an organization\'s accounts','审计；审查','','The proprietary nature of AI systems impedes meaningful public audit.'],
+            ['nuance','nuer (shade, cloud)','A subtle distinction or variation','细微差别；微妙之处','','Human dignity involves nuances that algorithms cannot easily navigate.'],
+            ['automated','autos (self) + matos (willing)','Controlled by machines with minimal human intervention','自动化的','','Scholars require that automated decisions be interpretable by affected parties.'],
+            ['governance','gubernare (steer, rule) + -ance','The act or manner of governing','治理；统治方式','','The proliferation of AI has precipitated a crisis in ethical governance.']
+        ]
+    ),
+    
+    makeArticle('a3_climate', 'Climate Change Adaptation Strategies',
+        'Adapted from Nature Climate Change (Review Article)', '2023-03-10',
+        `Anthropogenic climate change has triggered profound shifts in global weather patterns, necessitating urgent adaptation across multiple sectors. The latest Intergovernmental Panel assessment indicates that even with aggressive mitigation, certain impacts are now irreversible. Coastal communities face escalating vulnerability to sea-level rise and storm surge amplification, while agricultural regions confront altered precipitation regimes and increased frequency of extreme drought. Ecosystem resilience depends critically on maintaining biodiversity corridors that permit species migration. Some researchers advocate for geoengineering interventions, such as stratospheric aerosol injection, though these remain highly contentious. Urban planners increasingly emphasize green infrastructure—permeable surfaces, urban forests, and restored wetlands—to manage runoff and reduce heat island effects. The transition to renewable energy portfolios, including offshore wind and distributed solar arrays, requires substantial grid modernization. Ultimately, successful adaptation demands not merely technological innovation but also institutional coordination and equitable resource distribution.`,
+        [
+            ['anthropogenic','anthropos (human) + genic (producing)','Caused or produced by humans','人类活动引起的；人为的','','Anthropogenic climate change has triggered profound shifts in global weather patterns.'],
+            ['necessitating','necesse (necessary) + -tate','To make necessary as a result; to compel','使成为必要；迫使','','The crisis is necessitating urgent adaptation across multiple sectors.'],
+            ['mitigation','mitis (mild) + agere (drive)','The action of reducing severity or seriousness','减轻；缓和；缓解','','Even with aggressive mitigation, certain impacts are now irreversible.'],
+            ['irreversible','ir- (not) + re- (back) + vertere (turn)','Not able to be undone or reversed','不可逆的；不可挽回的','','The melting of polar ice caps appears increasingly irreversible.'],
+            ['vulnerability','vulnerare (wound) + -ability','The quality of being susceptible to attack or damage','脆弱性；易损性','','Coastal communities face escalating vulnerability to sea-level rise.'],
+            ['escalating','scala (ladder) + -ate','To increase rapidly; to become more intense','逐步升级；迅速增加','','The conflict is escalating beyond anyone\'s expectations.'],
+            ['amplification','amplus (large) + -ification','The process of increasing in volume or extent','放大；增强','','Storm surge amplification threatens coastal infrastructure.'],
+            ['precipitation','prae- (before) + caput (head) + -ation','Rain, snow, sleet, or hail that falls to the ground','降水；降水量','化学中指"沉淀作用"','Agricultural regions confront altered precipitation regimes.'],
+            ['drought','drugoth (dryness)','A prolonged period of abnormally low rainfall','干旱；旱灾','','The increased frequency of extreme drought concerns climatologists.'],
+            ['resilience','re- (back) + salire (leap)','The capacity to recover quickly from difficulties','恢复力；韧性','','Ecosystem resilience depends critically on maintaining biodiversity.'],
+            ['biodiversity','bio- (life) + diversity','The variety of life in a particular habitat','生物多样性','','Maintaining biodiversity corridors permits species migration.'],
+            ['corridors','currere (run)','A long passage or channel; a strip linking habitats','走廊；通道；（生态）廊道','','Wildlife corridors allow animals to move between fragmented habitats.'],
+            ['migration','migrare (move) + -ation','Seasonal movement of animals from one region to another','迁移；迁徙；移民','','Species migration is essential for adapting to climate shifts.'],
+            ['geoengineering','geo- (earth) + engineering','The deliberate large-scale intervention in Earth\'s systems','地球工程；地质工程','','Some researchers advocate for geoengineering interventions.'],
+            ['stratospheric','stratum (layer) + sphere + -ic','Relating to the layer of the atmosphere above the troposphere','平流层的；同温层的','','Stratospheric aerosol injection remains highly contentious.'],
+            ['contention','tendere (stretch)','Heated disagreement; an assertion made in argument','争论；论点','','These proposals remain highly contentious among scientists.'],
+            ['permeable','per- (through) + meare (pass)','Allowing liquids or gases to pass through','可渗透的；透水的','','Urban planners emphasize permeable surfaces to manage runoff.'],
+            ['runoff','run + off','The draining away of water from land; surplus','径流；决赛；溢流','政治中指"决赛，决胜局"','Permeable surfaces help manage stormwater runoff effectively.'],
+            ['wetlands','wet + land','Areas of land saturated with water; marshes or swamps','湿地；沼泽地','','Restored wetlands provide crucial habitats for waterfowl.'],
+            ['renewable','re- (again) + novare (make new) + -able','Capable of being replenished naturally','可再生的；可更新的','','The transition to renewable energy portfolios is accelerating.'],
+            ['portfolio','portare (carry) + folium (leaf)','A range of investments or products; a flat case','投资组合；公文包；系列','文中指"能源组合"','The utility company diversified its renewable energy portfolio.'],
+            ['distributed','dis- (apart) + tribuere (assign)','Spread over a wide area; shared among many','分布式的；分散式的','','Distributed solar arrays require sophisticated grid management.'],
+            ['arrays','arredare (prepare)','An ordered arrangement; a large group','数组；排列；一系列','数学/计算机中指"数组"','Solar arrays convert sunlight into electricity efficiently.'],
+            ['modernization','modus (measure) + -ization','The adaptation of something to modern needs','现代化','','Substantial grid modernization is required for renewable integration.'],
+            ['equitable','aequus (equal) + -able','Fair and impartial; just','公平的；公正的','','Successful adaptation demands equitable resource distribution.'],
+            ['profound','pro- (forward) + fundus (bottom)','Very great or intense; having deep insight','深远的；深刻的；深奥的','','The philosopher offered profound insights into human nature.'],
+            ['regimes','regere (rule)','A government or system of rule; a controlled conditions','政权；政体；管理制度','科学中指"体系，状态"','Under the new regime, economic policies shifted dramatically.'],
+            ['intervention','inter- (between) + venire (come)','The action of becoming involved to improve a situation','干预；介入；调停','','Medical intervention saved the patient\'s life.'],
+            ['sectors','secare (cut)','A distinct part or branch of an economy or society','部门；领域；扇形','几何中指"扇形"','The crisis affects multiple sectors including agriculture and tourism.'],
+            ['infrastructure','infra- (below) + structura (structure)','Basic physical structures needed for operation','基础设施；下部构造','','Green infrastructure includes urban forests and restored wetlands.'],
+            ['fragmented','fragmen (fragment) + -ed','Broken into small or separate parts','碎片化的；分裂的','','Habitat fragmentation threatens species survival worldwide.']
+        ]
+    ),
+    
+    makeArticle('a4_cognitive', 'Heuristics and Biases in Human Judgment',
+        'Adapted from Cognitive Psychology Review (Open Access)', '2023-04-05',
+        `Human decision-making relies extensively on cognitive shortcuts known as heuristics, which typically yield efficient outcomes but occasionally produce systematic distortions. The pioneering research of Kahneman and Tversky demonstrated that intuitive judgments often override deliberate reasoning, particularly under conditions of uncertainty. Prospect theory revealed that individuals evaluate potential losses and gains asymmetrically, exhibiting loss aversion even when rational analysis suggests risk acceptance. The availability heuristic causes people to overestimate the probability of vivid, memorable events while neglecting statistical base rates. Similarly, anchoring effects demonstrate how arbitrary initial values constrain subsequent estimates, even among expert populations. These empirical anomalies persist despite educational interventions, suggesting that cognitive biases reflect deep-rooted features of mental architecture rather than superficial misconceptions. Contemporary researchers investigate whether structured debiasing protocols or algorithmic decision aids can effectively mitigate these inherent limitations.`,
+        [
+            ['heuristics','heuriskein (find)','Mental shortcuts that allow quick problem-solving','启发法；直观推断','','Human decision-making relies extensively on cognitive shortcuts known as heuristics.'],
+            ['cognitive','cognoscere (know)','Relating to mental processes such as thinking and reasoning','认知的；认识的','','Cognitive psychology investigates how people process information.'],
+            ['distortions','dis- (apart) + torquere (twist)','The action of giving a misleading account; twisting','扭曲；曲解；变形','','Heuristics occasionally produce systematic distortions in judgment.'],
+            ['pioneering','pionnier (foot soldier)','Involving new ideas or methods; innovative','开创性的；先驱的','','The pioneering research demonstrated fundamental principles of decision-making.'],
+            ['intuitive','intueri (look at)','Based on feelings rather than facts or evidence','直觉的；凭直觉获知的','','Intuitive judgments often override deliberate reasoning.'],
+            ['deliberate','de- (completely) + librare (balance)','Done consciously and intentionally; to consider carefully','故意的；深思熟虑的','','The jury took hours to deliberate on the verdict.'],
+            ['uncertainty','un- (not) + certus (certain)','The state of being unsure; doubt','不确定性；犹豫','','Investors face considerable uncertainty in volatile markets.'],
+            ['asymmetrically','a- (not) + symmetria (symmetry) + -ally','In a way that lacks symmetry or balance','不对称地；不平衡地','','Individuals evaluate losses and gains asymmetrically.'],
+            ['aversion','ab- (away) + vertere (turn)','A strong dislike or disinclination','厌恶；反感；回避','','The study revealed strong loss aversion among participants.'],
+            ['probability','probare (prove, test) + -ility','The extent to which something is likely to occur','可能性；概率','数学中指"概率"','The probability of rain tomorrow is approximately seventy percent.'],
+            ['neglecting','neg- (not) + legere (choose, read)','To fail to care for properly; to ignore','忽视；疏忽；不予重视','','People neglect statistical base rates when making judgments.'],
+            ['anchoring','ancora (anchor)','The tendency to rely too heavily on the first piece of information','锚定；固定','心理学专有概念','Anchoring effects constrain subsequent estimates even among experts.'],
+            ['arbitrary','arbiter (judge)','Based on random choice rather than reason','任意的；武断的；专制的','','The deadline seemed arbitrary rather than based on project needs.'],
+            ['constraints','con- (together) + stringere (bind)','Limitations or restrictions on action','限制；约束；强制','','Budget constraints prevented the team from hiring more staff.'],
+            ['empirical','empeirikos (experienced)','Based on observation or experience rather than theory','经验主义的；实证的','','These empirical anomalies persist despite educational interventions.'],
+            ['anomalies','an- (not) + homalos (even)','Something that deviates from the standard or norm','异常；反常现象','','Scientists investigated the anomaly in the experimental data.'],
+            ['superficial','super- (above) + facies (face)','Existing on the surface only; shallow','表面的；肤浅的；表层的','','The analysis revealed deep-rooted features rather than superficial misconceptions.'],
+            ['misconceptions','mis- (wrong) + concipere (conceive)','A view or opinion that is incorrect','误解；错误观念','','The course aims to correct common misconceptions about physics.'],
+            ['contemporary','con- (together) + tempus (time)','Living or occurring at the same time; modern','当代的；同时代的','','Contemporary researchers investigate debiasing protocols.'],
+            ['protocols','protokollon (first leaf)','Official procedures or rules; a plan for research','协议；规程；方案','外交/医学中指"议定书，治疗方案"','The laboratory follows strict safety protocols at all times.'],
+            ['mitigate','mitis (mild) + agere (drive)','To make less severe, serious, or painful','减轻；缓和','','Nothing could mitigate the suffering of the displaced population.'],
+            ['inherent','inhaerere (stick to)','Existing as a natural or permanent quality','固有的；内在的；与生俱来的','','These inherent limitations affect all human decision-makers.'],
+            ['shortcuts','short + cut','A shorter alternative route; a quick method','捷径；近路；简化方法','','Heuristics are mental shortcuts that allow efficient problem-solving.'],
+            ['systematic','systema (organized whole) + -atic','Done according to a fixed plan or system','系统的；有条不紊的','','The research revealed systematic distortions in intuitive judgment.'],
+            ['reasoning','ratio (reckoning)','The action of thinking about something logically','推理；推论；论证','','Deliberate reasoning often yields better outcomes than intuition.'],
+            ['exhibiting','ex- (out) + habere (hold)','To publicly display; to show as a quality','展览；显示；表现出','','The participants exhibited loss aversion despite rational analysis.'],
+            ['vivid','vivere (live)','Producing powerful feelings or strong, clear images','生动的；鲜明的；强烈的','','The availability heuristic causes overestimation of vivid events.'],
+            ['estimates','aestimare (value)','Rough calculations or judgments of value','估计；估价；判断','','Expert estimates varied widely regarding project costs.'],
+            ['architecture','architekton (master builder)','The complex structure of something','建筑学；结构；体系','','Cognitive biases reflect features of mental architecture.'],
+            ['limitations','limes (boundary) + -ation','Restricting conditions; weaknesses','限制；局限；边界','','Every methodology has inherent limitations that researchers must acknowledge.']
+        ]
+    ),
+    
+    makeArticle('a5_econ', 'Globalization and Economic Inequality',
+        'Adapted from Journal of International Economics (Working Paper)', '2023-05-12',
+        `The contemporary wave of economic globalization has generated aggregate prosperity while simultaneously exacerbating domestic inequality in developed nations. Standard trade theory predicts that liberalization benefits nations according to comparative advantage, yet empirical evidence reveals uneven distributional consequences. Manufacturing sectors in advanced economies have experienced substantial outsourcing pressure as multinational enterprises relocate production to jurisdictions with lower labor costs. This spatial reorganization of supply chains, while enhancing consumer welfare through reduced prices, has displaced established workforces and suppressed wage growth for non-college-educated labor. Economists debate whether compensatory redistribution mechanisms—trade adjustment assistance, wage insurance, or targeted retraining—can adequately offset these concentrated losses. Furthermore, speculative capital flows and currency fluctuations introduce volatility that complicates macroeconomic management. The challenge for policymakers lies not in reversing integration but in designing institutional frameworks that distribute gains more equitably without sacrificing productive efficiency.`,
+        [
+            ['globalization','globus (sphere) + -ization','The process of international integration arising from trade','全球化','','Economic globalization has generated aggregate prosperity worldwide.'],
+            ['aggregate','ad- (to) + gregare (flock)','Formed by combining units into one total','总计的；集合的；聚合体','数学中指"集合，总计"','Aggregate demand determines overall economic output levels.'],
+            ['exacerbating','ex- (out) + acerbus (harsh)','To make a problem worse or more severe','加剧；使恶化；使加重','','The policy risks exacerbating existing social tensions.'],
+            ['liberalization','liber (free) + -ization','The removal of restrictions, typically in economic policy','自由化；放宽限制','','Trade liberalization benefits nations according to comparative advantage.'],
+            ['comparative','comparare (pair, match)','Measured or judged by estimation of similarities','比较的；相对的','','The theory of comparative advantage explains trade patterns.'],
+            ['jurisdictions','jus (law) + dicere (say) + -tion','The official power to make legal decisions; a territory','司法权；管辖权；行政区','','Multinationals relocate to jurisdictions with favorable tax regimes.'],
+            ['outsourcing','out + source + -ing','Obtaining goods or services from external suppliers','外包；外购','','Manufacturing sectors face substantial outsourcing pressure.'],
+            ['multinational','multi- (many) + national','Operating in several countries','跨国的；跨国公司','','Multinational enterprises dominate global trade networks.'],
+            ['reorganization','re- (again) + organum (organ) + -ization','The act of organizing differently; restructuring','重组；改组；整顿','','The spatial reorganization of supply chains affects local labor markets.'],
+            ['enhancing','in- (in) + altus (high)','To intensify or increase in quality or value','提高；增强；改进','','Technology is enhancing productivity across multiple sectors.'],
+            ['displaced','dis- (apart) + place','Forced to leave home or job; replaced','流离失所的；取代的；位移的','物理中指"位移"','The factory closure displaced over two thousand workers.'],
+            ['suppressed','sub- (under) + premere (press)','Forcibly put an end to; restrained','压制；抑制；隐瞒','','The regime suppressed all forms of political dissent.'],
+            ['compensatory','com- (together) + pensare (weigh) + -ory','Providing compensation; making up for a loss','补偿的；赔偿的','','The court awarded compensatory damages to the plaintiff.'],
+            ['redistribution','re- (again) + distribuere (divide)','The distribution of something in a different way','重新分配；再分配','','Redistribution mechanisms aim to offset concentrated losses.'],
+            ['offset','off + set','To counteract something by having an equal and opposite force','抵消；补偿；偏移量','印刷中指"胶印，偏移"','The gains in efficiency offset the initial investment costs.'],
+            ['speculative','specere (look) + -ative','Engaged in or based on conjecture rather than knowledge','投机的；推测的；思辨的','','Speculative capital flows can destabilize emerging markets.'],
+            ['volatility','volare (fly)','The liability to change rapidly and unpredictably','波动性；挥发性','化学中指"挥发性"','Currency volatility complicates macroeconomic management.'],
+            ['macroeconomic','macro- (large) + economic','Relating to the branch of economics concerned with large-scale factors','宏观经济的','','Central banks use interest rates as a macroeconomic tool.'],
+            ['policymakers','policy + maker','People responsible for formulating policies','政策制定者；决策者','','Policymakers must balance growth with environmental protection.'],
+            ['integration','integer (whole) + -ation','The action of combining into an integral whole','一体化；整合；积分','数学中指"积分"','Economic integration has accelerated in the European Union.'],
+            ['equitably','aequus (equal) + -ably','In a fair and impartial manner','公平地；公正地','','The framework should distribute gains more equitably.'],
+            ['sacrificing','sacer (sacred)','To give up something valued for a higher purpose','牺牲；献祭；舍弃','','We cannot sacrifice environmental quality for short-term profits.'],
+            ['prosperity','prosperus (fortunate)','The state of flourishing; economic success','繁荣；兴旺；成功','','The nation enjoyed a period of unprecedented prosperity.'],
+            ['distributional','distribuere (divide) + -al','Relating to the way things are shared or spread out','分配的；分布的','','The policy has uneven distributional consequences across regions.'],
+            ['workforces','work + force','The people engaged in or available for work','劳动力；职工总数','','Automation threatens to disrupt traditional manufacturing workforces.'],
+            ['tariff','tariffa (list of prices)','A tax on imports or exports in international trade','关税；税率表','','The government imposed protective tariffs on imported steel.'],
+            ['subsidy','subsidium (reserve troops)','A sum of money granted to assist an industry or business','补贴；津贴；补助金','','Agricultural subsidies remain controversial in international trade talks.'],
+            ['bilateral','bi- (two) + latus (side)','Involving two parties or countries','双边的；双方的','','The two nations signed a bilateral trade agreement.'],
+            ['multilateral','multi- (many) + latus (side)','Agreed upon or participated in by multiple parties','多边的；多国参加的','','Multilateral negotiations proved more complex than anticipated.']
+        ]
+    ),
+    
+    makeArticle('a6_bioethics', 'Ethical Frontiers in Genetic Engineering',
+        'Adapted from The American Journal of Bioethics (Open Access)', '2023-06-18',
+        `The advent of CRISPR-Cas9 genome editing has precipitated intense ethical deliberation regarding the boundaries of permissible human intervention in hereditary material. Somatic gene therapy, which modifies non-reproductive cells to treat disease, has garnered widespread consensus as a legitimate medical application. However, germline editing—altering DNA in sperm, eggs, or embryos—raises profound concerns because modifications become heritable and affect descendants. Critics emphasize the specter of genetic enhancement beyond therapeutic goals, potentially exacerbating social inequality through boutique biotechnology accessible only to the affluent. The principle of autonomy demands robust informed consent, yet future generations cannot authorize modifications to their genomes. Regulatory frameworks vary dramatically across jurisdictions, from permissive oversight in some regions to statutory prohibitions elsewhere. The scientific community continues to grapple with establishing responsible innovation pathways that respect human dignity while preserving research freedom.`,
+        [
+            ['advent','ad- (to) + venire (come)','The arrival of a notable person or event','到来；出现；基督降临节','','The advent of the internet transformed global communication.'],
+            ['precipitated','prae- (before) + caput (head)','To cause to happen suddenly or unexpectedly','促成；使突然发生','化学中指"沉淀"','The breakthrough precipitated intense ethical deliberation.'],
+            ['deliberation','de- (completely) + librare (balance) + -tion','Long and careful consideration or discussion','审议；考虑；从容','','The jury retired for deliberation before reaching a verdict.'],
+            ['permissible','per- (through) + mittere (send) + -ible','Allowed or permitted','可允许的；许可的','','The court defined the boundaries of permissible conduct.'],
+            ['hereditary','hereditarius (heir)','Passing from parent to offspring in the genes','遗传的；世袭的','','The disease has a strong hereditary component.'],
+            ['somatic','soma (body)','Relating to the body as opposed to the mind or germ cells','体细胞的；躯体的','','Somatic gene therapy modifies non-reproductive cells.'],
+            ['consensus','con- (together) + sentire (feel)','General agreement among a group','共识；一致同意','','The panel reached consensus on the recommended guidelines.'],
+            ['legitimate','legitimus (lawful)','Conforming to the law or rules; valid','合法的；正当的；合理的','','The court recognized her claim as entirely legitimate.'],
+            ['germline','germen (sprout) + line','The line of cells that give rise to gametes','生殖系；种系','','Germline editing raises profound ethical concerns.'],
+            ['heritable','hereditarius (heir) + -able','Capable of being passed from parent to offspring','可遗传的；可继承的','','These modifications become heritable and affect descendants.'],
+            ['descendants','de- (down) + scandere (climb)','People descended from a particular ancestor','后代；后裔','','Future descendants cannot authorize modifications to their genomes.'],
+            ['specter','spectrum (apparition)','A ghost; something widely feared as a dangerous possibility','幽灵；恐惧；恐慌','','The specter of nuclear war haunted the Cold War era.'],
+            ['enhancement','in- (in) + altus (high) + -ment','An increase or improvement in quality or value','增强；提高；改善','','Genetic enhancement beyond therapeutic goals raises concerns.'],
+            ['exacerbating','ex- (out) + acerbus (harsh)','To make a problem worse','加剧；使恶化','','This could exacerbate social inequality significantly.'],
+            ['boutique','boutique (shop)','A small company offering specialized services; fashionable','精品店；小型的；专营的','','Boutique biotechnology may be accessible only to the affluent.'],
+            ['affluent','ad- (to) + fluere (flow)','Having a great deal of money; wealthy','富裕的；富足的','','The neighborhood is home to affluent professionals.'],
+            ['autonomy','autos (self) + nomos (law)','The right to self-government; freedom of will','自治；自主权；自律','','The principle of autonomy demands robust informed consent.'],
+            ['informed','in- (in) + formare (shape)','Having or showing knowledge of a subject','知情的；见多识广的','','Patients must provide informed consent before surgery.'],
+            ['statutory','statutum (law) + -ory','Required or permitted by law','法定的；依照法规的','','The organization has statutory obligations to its members.'],
+            ['prohibitions','pro- (before) + habere (hold) + -tion','The action of forbidding something by law','禁止；禁令；禁酒','','Statutory prohibitions on research vary across jurisdictions.'],
+            ['grapple','grappiller (seize)','To engage in a close fight; to struggle with a problem','扭打；努力解决；抓住','','The community continues to grapple with these complex issues.'],
+            ['pathways','path + way','A course of action; a route in a biological process','途径；路径；方式','生物中指"代谢途径"','Researchers are mapping neural pathways in the brain.'],
+            ['dignity','dignitas (worth)','The state of being worthy of honor or respect','尊严；高贵；尊贵','','Medical ethics requires respect for patient dignity.'],
+            ['innovation','in- (in) + novare (make new) + -tion','A new method, idea, or product','创新；革新；新方法','','Technological innovation drives economic growth.'],
+            ['regulatory','regulare (control) + -ory','Serving to control an activity or process','监管的；管理的；调整的','','Regulatory frameworks vary dramatically across jurisdictions.'],
+            ['reproductive','re- (again) + producere (produce) + -ive','Relating to the production of offspring','生殖的；繁殖的','','Reproductive health remains a global policy priority.'],
+            ['community','com- (together) + munis (serving)','A group sharing common characteristics or interests','社区；团体；界','科学中指"学术界，团体"','The scientific community issued a statement on research ethics.'],
+            ['intervention','inter- (between) + venire (come) + -tion','The action of becoming involved to alter a situation','干预；介入；调停','','Early intervention improves outcomes for children with disabilities.'],
+            ['boundaries','bodere (limit)','Limits defining the scope of something','边界；界限；范围','','The research pushes the boundaries of current knowledge.']
+        ]
+    ),
+    
+    makeArticle('a7_education', 'The Metrics of Educational Assessment',
+        'Adapted from American Educational Research Journal (Open Access)', '2023-07-22',
+        `The proliferation of standardized testing as an accountability mechanism has generated substantial controversy among educators and policymakers. While such assessments provide measurable metrics for comparing institutional performance, critics argue that excessive reliance on examinations narrows curriculum focus and distorts pedagogical priorities. Empirical studies demonstrate significant correlations between socioeconomic status and test scores, suggesting that assessments may reflect demographic advantage rather than pure academic merit. Furthermore, the phenomenon of stereotype threat indicates that marginalized groups perform below their actual proficiency when aware of negative societal expectations. Alternative assessment frameworks—portfolio evaluation, performance-based tasks, and collaborative projects—attempt to capture competencies that elude traditional measurement, including creativity, critical thinking, and synthesis of interdisciplinary knowledge. However, implementing these alternatives at scale presents formidable logistical challenges and raises questions about reliability and cross-context validity.`,
+        [
+            ['proliferation','proles (offspring) + ferre (bear) + -ation','Rapid increase in numbers','激增；扩散','','The proliferation of standardized testing has generated controversy.'],
+            ['accountability','ad- (to) + computare (count) + -ability','The obligation to account for activities; responsibility','责任；问责制；可说明性','','Standardized testing serves as an accountability mechanism.'],
+            ['assessments','ad- (to) + sedere (sit) + -ment','The evaluation or estimation of nature or quality','评估；评价；评定','','Formative assessments help teachers adjust instruction.'],
+            ['metrics','metron (measure)','Systems of measurement; standards for comparison','指标；度量标准','','Such assessments provide measurable metrics for comparing performance.'],
+            ['institutional','institutum (establishment) + -al','Relating to an organization or establishment','机构的；制度的','','The policy affects institutional performance nationwide.'],
+            ['curriculum','currere (run)','The subjects comprising a course of study','课程；全部课程','复数形式为curricula','The school revised its science curriculum last year.'],
+            ['pedagogical','paidagogos (teacher) + -ical','Relating to teaching methods or practice','教育学的；教学法的','','The reform aims to improve pedagogical practices in primary schools.'],
+            ['empirical','empeirikos (experienced)','Based on observation rather than theory','经验主义的；实证的','','Empirical studies demonstrate significant correlations.'],
+            ['correlations','cor- (together) + relatio (report)','A mutual relationship between two things','相关性；相互关系','','Researchers found strong correlations between sleep and academic performance.'],
+            ['socioeconomic','socio- + economic','Relating to the interaction of social and economic factors','社会经济学的','','There are significant socioeconomic disparities in healthcare access.'],
+            ['demographic','dēmos (people) + graphein (write)','Relating to the structure of populations','人口的；人口统计的','','Demographic changes affect electoral politics profoundly.'],
+            ['merit','mereri (deserve)','The quality of being particularly good; worth','优点；价值；功绩','','Scholarships are awarded purely on academic merit.'],
+            ['stereotype','stereos (solid) + typos (impression)','A widely held but fixed oversimplified image','刻板印象；陈规旧见','','The advertisement reinforces harmful gender stereotypes.'],
+            ['marginalized','margo (edge) + -al + -ize','To treat as insignificant or peripheral','边缘化的；排斥的','','Social policies often fail to address marginalized communities.'],
+            ['proficiency','pro- (forward) + facere (make) + -ency','A high degree of competence or skill','熟练；精通；水平','','The test measures language proficiency across four skills.'],
+            ['competencies','com- (together) + petere (seek) + -ency','The ability to do something successfully','能力；胜任力','','The framework defines core competencies for graduates.'],
+            ['creativity','creare (create) + -ivity','The use of imagination to produce new ideas','创造力；创造性','','Standardized tests rarely measure creativity effectively.'],
+            ['synthesis','syn- (together) + tithenai (place)','The combination of components to form a connected whole','综合；合成；综合体','','The thesis provides an impressive synthesis of historical sources.'],
+            ['interdisciplinary','inter- (between) + disciplina (teaching)','Relating to more than one branch of knowledge','跨学科的；交叉学科的','','The research center promotes interdisciplinary collaboration.'],
+            ['implementing','implere (fill) + -ment + -ing','To put into effect; to carry out','实施；执行；实现','','Implementing these alternatives presents formidable challenges.'],
+            ['formidable','formidare (fear)','Inspiring fear or respect through being impressively powerful','强大的；可怕的；艰巨的','','The team faces formidable opposition in the championship.'],
+            ['logistical','logistikos (skilled in calculation)','Relating to the organization of a complex operation','后勤的；物流的；安排的','','The logistical challenges of evacuation were immense.'],
+            ['reliability','re- (again) + ligare (bind) + -ability','The quality of being trustworthy and consistent','可靠性；可信度','','Engineers tested the reliability of the new system.'],
+            ['validity','valere (be strong) + -ity','The quality of being logically or factually sound','有效性；正确性；合法性','','The study questions the validity of previous findings.'],
+            ['examinations','ex- (out) + agmen (drive)','Detailed inspections or assessments; formal tests','检查；考试；审查','','Students prepare for examinations throughout the academic year.'],
+            ['alternative','alter (other) + -native','Available as another possibility; unconventional','替代的；可供选择的','','We must consider alternative explanations for the data.'],
+            ['measurement','metiri (measure) + -ment','The process of measuring; size or extent','测量；度量；尺寸','','Accurate measurement is essential in scientific experiments.'],
+            ['evaluation','e- (out) + valere (be strong) + -ation','The making of a judgment about the value of something','评价；评估；估价','','The project requires ongoing evaluation of its effectiveness.']
+        ]
+    ),
+    
+    makeArticle('a8_media', 'Algorithmic Curation and Information Ecosystems',
+        'Adapted from Media, Culture & Society (Open Access)', '2023-08-14',
+        `Contemporary digital platforms employ sophisticated algorithmic curation to personalize content delivery, yet this technological intervention has inadvertently constructed pervasive filter bubbles and echo chambers. Users encountering ideologically homogeneous information streams experience heightened polarization, as exposure to dissenting perspectives diminishes. The viral propagation of misinformation—deliberately false content—and disinformation—strategically manipulated narratives—poses existential challenges to democratic deliberation. Platform designers optimize for engagement metrics, inadvertently incentivizing sensationalism and clickbait over journalistic objectivity. Furthermore, the erosion of traditional gatekeeper functions has democratized publishing while simultaneously reducing editorial accountability. Critics advocate for algorithmic transparency and content moderation standards that balance free expression against harm reduction. Restoring information ecosystem health requires pluralistic exposure and serendipitous discovery rather than perfectly optimized predictability.`,
+        [
+            ['algorithmic','al-Khwarizmi (mathematician) + -ic','Relating to or using algorithms','算法的','','Platforms employ sophisticated algorithmic curation systems.'],
+            ['curation','curare (take care) + -tion','The selection and organization of content','策划；策展；管理','博物馆中指"策展"','The journal relies on careful curation of submitted articles.'],
+            ['personalize','persona (mask, character) + -ize','To design or produce to meet individual requirements','使个性化；针对个人','','The app allows users to personalize their news feeds.'],
+            ['intervention','inter- (between) + venire (come) + -tion','The action of becoming involved to alter a situation','干预；介入；调停','','Technological intervention has constructed filter bubbles.'],
+            ['pervasive','per- (through) + vadere (go)','Spreading widely throughout an area or group','普遍的；渗透的；遍布的','','Smartphones have become pervasive in modern society.'],
+            ['polarization','polus (pole) + -ization','Division into two sharply contrasting groups','两极分化；极化','物理学中指"偏振"','Political polarization has increased dramatically in recent years.'],
+            ['dissenting','dis- (apart) + sentire (feel) + -ing','Holding or expressing opinions that differ from majority','持不同意见的；反对的','','The judgment included a strong dissenting opinion.'],
+            ['perspectives','per- (through) + specere (look) + -ive','Particular attitudes toward or ways of regarding something','视角；观点；透视','艺术中指"透视法"','Travel broadens one\'s perspectives on different cultures.'],
+            ['viral','virus (poison)','Relating to or caused by a virus; spreading rapidly online','病毒性的；病毒式的','','The video went viral within hours of being posted.'],
+            ['propagation','pro- (forward) + pagare (fasten)','The breeding of organisms; spread of ideas','繁殖；传播；宣传','','The propagation of misinformation threatens public health.'],
+            ['misinformation','mis- (wrong) + informatio (conception)','False or inaccurate information','错误信息；误传','','The campaign aimed to combat health misinformation online.'],
+            ['disinformation','dis- (apart, opposite) + informatio','False information spread deliberately to deceive','虚假信息；假情报','','State actors used disinformation to influence elections.'],
+            ['deliberation','de- (completely) + librare (balance) + -tion','Long and careful consideration','审议；考虑；从容','','Democratic deliberation requires exposure to diverse viewpoints.'],
+            ['optimize','optimus (best) + -ize','To make the best or most effective use of','优化；使最优化','','Engineers work to optimize system performance.'],
+            ['engagement','in- (in) + gage (pledge) + -ment','The action of engaging; emotional involvement','参与；订婚；约定','社交媒体中指"互动，参与度"','High engagement metrics indicate content popularity.'],
+            ['incentivizing','in- (in) + centum (hundred) + -ize','To motivate or encourage through rewards','激励；鼓励','','The policy focuses on incentivizing renewable energy adoption.'],
+            ['sensationalism','sensus (feeling) + -ation + -ism','The presentation of stories to provoke public interest','煽情主义；哗众取宠','','Tabloid newspapers often rely on sensationalism.'],
+            ['clickbait','click + bait','Content whose main purpose is to attract attention','标题党；点击诱饵','','Clickbait headlines promise shocking revelations.'],
+            ['objectivity','ob- (toward) + jacere (throw) + -ivity','The quality of being unbiased','客观性；公正','','Journalistic objectivity remains a professional ideal.'],
+            ['erosion','erodere (gnaw away)','The gradual destruction or diminution of something','侵蚀；腐蚀；削弱','','Soil erosion threatens agricultural productivity.'],
+            ['gatekeeper','gate + keeper','A person controlling access to something','看门人；把关者；守门人','','The internet has disrupted traditional media gatekeepers.'],
+            ['accountability','ad- (to) + computare (count) + -ability','Responsibility for actions; answerability','责任；问责制','','Democratized publishing reduces editorial accountability.'],
+            ['transparency','trans- (through) + parere (appear) + -ency','The condition of being transparent; openness','透明；透明度；公开','','Advocates demand greater algorithmic transparency.'],
+            ['moderation','moderari (manage) + -tion','The avoidance of excess; oversight of content','适度；节制；审核','','Content moderation requires balancing free expression and safety.'],
+            ['pluralistic','pluralis (more than one) + -istic','Relating to a system where multiple groups coexist','多元的；多元主义的','','A healthy democracy requires pluralistic exposure to ideas.'],
+            ['serendipitous','Serendip (old name for Sri Lanka) + -ous','Occurring by chance in a happy or beneficial way','偶然发现的；意外收获的','','Scientific breakthroughs often involve serendipitous discovery.'],
+            ['ecosystem','eco- + system','A biological community of interacting organisms','生态系统；（引申为）体系','','Restoring information ecosystem health requires systemic change.'],
+            ['ideologically','ideo- (idea) + -logy + -ically','In a manner relating to ideology or doctrines','意识形态上；思想上','','The channels are ideologically homogeneous in content.']
+        ]
+    ),
+    
+    makeArticle('a9_anthropology', 'Cultural Evolution and Technological Transmission',
+        'Adapted from Evolutionary Anthropology (Open Access)', '2023-09-30',
+        `The study of cultural evolution examines how socially transmitted information accumulates and transforms over successive generations. Unlike genetic inheritance, cultural transmission occurs through multiple pathways: vertical transmission from parents to offspring, oblique transmission from elders to unrelated youth, and horizontal transmission among peers. Archaeological evidence demonstrates that early hominins utilized simple stone tools for millions of years before the emergence of more complex technological suites associated with anatomically modern humans. The capacity for cumulative culture—where innovations build upon previous modifications—appears restricted to our species, though recent observations of wild chimpanzees suggest rudimentary traditions in termite fishing and nut cracking. Population density and social interconnectedness strongly influence rates of innovation; isolated groups may lose complex skills through imperfect transmission. Ritual practices and symbolic artifacts likely facilitated social cohesion among expanding populations, though the precise cognitive mechanisms underlying these behaviors remain subjects of active investigation.`,
+        [
+            ['evolution','evolvere (unroll)','The gradual development of something','进化；演化；发展','','The study of cultural evolution examines socially transmitted information.'],
+            ['transmitted','trans- (across) + mittere (send) + -ed','Passed on from one person or place to another','传播的；传送的；传染的','','Culturally transmitted information accumulates over generations.'],
+            ['accumulates','ad- (to) + cumulus (heap) + -ate','To gather together or acquire an increasing number','积累；积聚；堆积','','Debt accumulates rapidly with compound interest.'],
+            ['successive','suc- (under) + cedere (go) + -ive','Following one another continuously','连续的；相继的；接任的','','The team achieved three successive victories.'],
+            ['inheritance','in- (in) + heres (heir) + -ance','Objects or qualities passed from predecessors','继承；遗产；遗传特征','','Genetic inheritance differs fundamentally from cultural transmission.'],
+            ['pathways','path + way','A course of action or route','途径；路径；方式','','Information flows through multiple transmission pathways.'],
+            ['vertical','vertex (highest point)','At right angles to the horizontal; upright','垂直的；纵向的；顶点的','','Vertical transmission occurs from parents to offspring.'],
+            ['oblique','obliquus (slanting)','Neither parallel nor at right angles; indirect','倾斜的；间接的；拐弯抹角的','','Oblique transmission occurs from elders to unrelated youth.'],
+            ['horizontal','horizon (boundary) + -al','Parallel to the plane of the horizon; lateral','水平的；横向的；同阶层的','','Horizontal transmission occurs among peer groups.'],
+            ['archaeological','archaios (ancient) + -logy + -ical','Relating to the study of human history through excavation','考古学的；考古的','','Archaeological evidence supports the migration hypothesis.'],
+            ['hominins','homo (human) + -in','Tribe of Hominini including modern humans and ancestors','人族；原始人类','','Early hominins utilized simple stone tools for millions of years.'],
+            ['emergence','e- (out) + mergere (dip) + -ence','The process of coming into view or becoming important','出现；浮现；兴起','','The emergence of agriculture transformed human societies.'],
+            ['anatomically','ana- (up) + temnein (cut) + -ically','Relating to bodily structure','解剖学上；结构上','','Anatomically modern humans appeared approximately 300,000 years ago.'],
+            ['cumulative','cumulare (heap up) + -ative','Increasing by successive additions','累积的；渐增的','','The capacity for cumulative culture appears restricted to humans.'],
+            ['innovations','in- (in) + novare (make new) + -tion','A new method, idea, or product','创新；革新；新方法','','Technological innovations drive economic competitiveness.'],
+            ['modifications','modus (measure) + -fication','The act of making partial changes','修改；改良；修饰','','Innovations build upon previous modifications.'],
+            ['rudimentary','rudis (rough) + -ment + -ary','Involving basic principles; not fully developed','基本的；初步的；退化的','生物学中指"未发育完全的"','The organism possesses rudimentary eyes.'],
+            ['traditions','tradere (hand over) + -tion','Long-established customs passed through generations','传统；惯例；传说','','Oral traditions preserve cultural memory across centuries.'],
+            ['interconnectedness','inter- (between) + connect + -edness','The state of being connected with each other','相互关联；互连','','Social interconnectedness influences rates of innovation.'],
+            ['isolated','insula (island) + -ate + -ed','Far away from others; separate','孤立的；隔离的；单独的','','Isolated groups may lose complex skills over time.'],
+            ['imperfect','im- (not) + perfectus (completed)','Not perfect; faulty or incomplete','不完美的；有缺陷的','','Imperfect transmission leads to cultural drift.'],
+            ['ritual','ritus (religious usage)','A religious or solemn ceremony; a series of actions','仪式；典礼；惯例','','Ritual practices facilitated social cohesion among groups.'],
+            ['symbolic','symbolon (token) + -ic','Serving as a symbol; representing something else','象征的；符号的','','The gift carried deep symbolic significance.'],
+            ['artifacts','arte (art) + factum (made)','Objects made by human beings of historical interest','人工制品；手工艺品；文物','','Archaeologists unearthed ancient artifacts at the site.'],
+            ['facilitated','facilis (easy) + -ate + -ed','To make an action or process easier','促进；使便利；帮助','','Technology has facilitated remote collaboration.'],
+            ['cohesion','co- (together) + haerere (stick) + -ion','The action of forming a united whole','凝聚力；团结；结合','','Social cohesion strengthens community resilience.'],
+            ['cognitive','cognoscere (know) + -ive','Relating to mental processes of knowing','认知的；认识的','','The study examines cognitive mechanisms underlying language.'],
+            ['mechanisms','mechane (machine) + -ism','Systems of parts working together; processes','机制；原理；机械装置','','The immune system employs sophisticated defense mechanisms.'],
+            ['investigation','in- (in) + vestigare (track) + -tion','The action of investigating; formal inquiry','调查；研究；审查','','The police launched a criminal investigation.'],
+            ['societies','socius (companion) + -ety','Groups of people forming communities','社会；社团；交往','','Complex societies require sophisticated governance structures.']
+        ]
+    ),
+    
+    makeArticle('a10_philsci', 'Reproducibility and Scientific Integrity',
+        'Adapted from Philosophy of Science (Open Access)', '2023-10-25',
+        `The so-called replication crisis has precipitated profound introspection within the empirical sciences. Large-scale collaborative efforts to reproduce published findings have yielded discouraging success rates, particularly in psychology and preclinical biomedical research. Methodologists attribute these failures partly to questionable research practices—selective reporting, inadequate statistical power, and hypothesizing after results are known (HARKing). The prevailing incentive structure, which prioritizes novel, statistically significant discoveries over careful replication, exacerbates these tendencies. Some advocates propose mandatory preregistration of study protocols and analysis plans, requiring researchers to specify hypotheses and methodological details before conducting experiments. Open science initiatives promote the archiving of raw data, analytical code, and research materials in public repositories. While such reforms impose additional burdens on investigators, they may prove essential for restoring public confidence in scientific institutions and ensuring that evidence-based policy rests on genuinely reliable foundations.`,
+        [
+            ['replication','re- (again) + plicare (fold) + -tion','The action of copying or reproducing something','复制；重复；折叠','生物学中指"复制"','Replication studies confirm the reliability of original findings.'],
+            ['crisis','krisis (decision)','A time of intense difficulty or danger','危机；危急关头；关键时刻','','The financial crisis affected economies worldwide.'],
+            ['introspection','intro- (within) + specere (look) + -tion','The examination of one\'s own mental processes','内省；反省；自省','','Philosophical introspection examines the nature of consciousness.'],
+            ['empirical','empeirikos (experienced)','Based on observation or experience rather than theory','经验主义的；实证的','','Empirical sciences rely on systematic observation and experiment.'],
+            ['collaborative','con- (together) + laborare (work) + -ive','Produced by or involving two or more parties working together','合作的；协作的','','The project requires collaborative efforts across institutions.'],
+            ['reproduce','re- (again) + producere (lead forward)','To produce a copy; to produce offspring','复制；繁殖；再现','','The experiment could not reproduce the original results.'],
+            ['discouraging','dis- (apart) + cor (heart) + -age + -ing','Causing loss of confidence or enthusiasm','令人气馁的；使人沮丧的','','The initial failures were discouraging but ultimately instructive.'],
+            ['methodologists','methodos (pursuit of knowledge) + -logist','Experts in the system of methods used in a discipline','方法论学者；方法学家','','Methodologists have identified systematic problems in research design.'],
+            ['inadequate','in- (not) + ad- (to) + aequatus (equal)','Lacking the quality or quantity required','不充分的；不足的；不胜任的','','The funding proved inadequate for the ambitious project.'],
+            ['hypothesizing','hupo- (under) + tithenai (place) + -ize','To propose an explanation made on limited evidence','假设；猜想','','Hypothesizing after results are known constitutes questionable practice.'],
+            ['prevailing','prae- (before) + valere (be strong) + -ing','Existing at a particular time; most frequent','盛行的；流行的；占优势的','','The prevailing wind blows from the southwest.'],
+            ['incentive','in- (in) + canere (sing) + -ive','A thing that motivates or encourages action','激励；刺激；动机','','Financial incentives influence researcher behavior significantly.'],
+            ['prioritizes','prior (former) + -itize','To treat as more important than other things','优先考虑；确定优先顺序','','The system prioritizes urgent cases over routine matters.'],
+            ['significant','signum (sign) + -fic + -ant','Sufficiently great to be worthy of attention; meaningful','重要的；有意义的；显著的','统计学中指"显著的"','The difference between groups was statistically significant.'],
+            ['mandatory','mandare (command) + -ory','Required by law or rules; compulsory','强制的；义务的；法定的','','The training course is mandatory for all new employees.'],
+            ['preregistration','prae- (before) + registrare (register) + -tion','Registration in advance of an activity','预注册；提前登记','','Mandatory preregistration of protocols prevents HARKing.'],
+            ['protocols','protokollon (first leaf)','Official procedures; detailed research plans','协议；规程；方案','','The laboratory follows strict experimental protocols.'],
+            ['analytical','ana- (up) + lyein (loosen) + -ical','Relating to analysis or logical reasoning','分析的；解析的','','Analytical chemistry determines the composition of substances.'],
+            ['repositories','re- (back) + ponere (place) + -ory','Places where things are stored and can be found','仓库；知识库；存储库','','Researchers deposit data in public repositories.'],
+            ['impose','in- (in) + ponere (place)','To force to be accepted or put in place','强加；征税；利用','','The government decided to impose strict environmental regulations.'],
+            ['investigators','in- (in) + vestigare (track) + -or','Persons carrying out formal inquiries or research','调查者；研究者；侦查员','','Federal investigators examined the company\'s financial records.'],
+            ['restoring','re- (again) + instaurare (renew)','To bring back to a former condition','恢复；修复；归还','','The museum spent years restoring the ancient manuscript.'],
+            ['genuinely','genuinus (innate) + -ly','Truly; in a way that corresponds to the original','真正地；真诚地；诚实地','','She was genuinely surprised by the announcement.'],
+            ['reliable','re- (back) + ligare (bind) + -able','Consistently good in quality or performance; trustworthy','可靠的；可信赖的','','The data provides a reliable basis for policy decisions.'],
+            ['foundations','fundare (lay base) + -tion','The lowest load-bearing part of a building; basis','基础；地基；基金会','','The theory rests on solid mathematical foundations.'],
+            ['integrity','integer (whole, complete) + -ity','The quality of being honest; wholeness','正直；诚实；完整','','Scientific integrity demands rigorous adherence to methods.'],
+            ['selective','se- (apart) + legere (choose) + -ive','Relating to the process of selecting; discriminating','选择性的；挑剔的','','Selective reporting biases the scientific literature.'],
+            ['statistical','status (state) + -istic + -al','Relating to the collection and analysis of data','统计的；统计学的','','Statistical power determines the ability to detect effects.'],
+            ['biomedical','bio- (life) + medicus (physician)','Relating to both biology and medicine','生物医学的','','Biomedical research has produced remarkable breakthroughs.'],
+            ['preclinical','prae- (before) + clinical','Occurring before clinical trials or medical testing','临床前的','','Preclinical studies assess drug safety in laboratory settings.'],
+            ['initiatives','initium (beginning) + -ative + -s','New plans or actions to achieve a goal','倡议；新方案；主动权','','Open science initiatives promote research transparency.']
+        ]
+    )
+];
+
+class StorageManager {
+    static getKey() { return CONFIG.STORAGE_KEY; }
+    
+    static load() {
+        try {
+            const raw = localStorage.getItem(this.getKey());
+            if (!raw) return this.initDefault();
+            const data = JSON.parse(raw);
+            return this.migrate(data);
+        } catch(e) {
+            console.error('Storage load error:', e);
+            return this.initDefault();
+        }
+    }
+    
+    static initDefault() {
+        return {
+            articles: PRESET_ARTICLES.map(a => ({...a})),
+            words: PRESET_ARTICLES.flatMap(a => a.words.map(w => ({...w}))),
+            studyState: null,
+            stats: { mastered: 0, totalScore: 0 },
+            settings: { apiKey: '', apiModel: 'deepseek-chat' },
+            version: 1
+        };
+    }
+    
+    static migrate(data) {
+        if (!data.articles) data.articles = [];
+        if (!data.words) data.words = [];
+        if (!data.stats) data.stats = { mastered: 0, totalScore: 0 };
+        if (!data.settings) data.settings = { apiKey: '', apiModel: 'deepseek-chat' };
+        PRESET_ARTICLES.forEach(preset => {
+            if (!data.articles.find(a => a.id === preset.id)) {
+                data.articles.push({...preset});
+                data.words.push(...preset.words.map(w => ({...w})));
+            }
+        });
+        return data;
+    }
+    
+    static save(data) {
+        localStorage.setItem(this.getKey(), JSON.stringify(data));
+    }
+    
+    static exportData() {
+        const data = this.load();
+        const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `gre_backup_${todayStr()}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+    
+    static importData(jsonStr) {
+        const imported = JSON.parse(jsonStr);
+        if (!imported.articles || !imported.words) throw new Error('Invalid backup format');
+        this.save(imported);
+        return imported;
+    }
+}
+
+class AcademicVocabApp {
+    constructor() {
+        try {
+            this.data = StorageManager.load();
+            this.currentView = 'home';
+            this.currentArticleId = null;
+            this.studyState = this.data.studyState;
+            this.showContinueModal = this.studyState !== null;
+            this.newArticleModalOpen = false;
+            this.container = document.getElementById('app');
+            this.render();
+            
+            window.addEventListener('beforeunload', () => {
+                if (this.studyState) {
+                    this.data.studyState = this.studyState;
+                    StorageManager.save(this.data);
+                }
+            });
+        } catch (err) {
+            console.error('App initialization failed:', err);
+            document.getElementById('app').innerHTML = `
+                <div class="flex items-center justify-center min-h-screen text-red-600">
+                    <div class="text-center">
+                        <div class="text-4xl mb-4">⚠️</div>
+                        <p class="text-lg">初始化出错：${err.message}</p>
+                        <p class="text-sm text-slate-500 mt-2">请检查控制台获取详情</p>
+                    </div>
+                </div>
+            `;
+        }
+    }
+    
+    render() {
+        try {
+            const views = {
+                home: () => this.renderHome(),
+                study: () => this.renderStudy(),
+                reading: () => this.renderReading(),
+                review: () => this.renderReview(),
+                settings: () => this.renderSettings(),
+                victory: () => this.renderVictory(),
+                apiSetup: () => this.renderApiSetup()
+            };
+            
+            this.container.innerHTML = `
+                ${this.renderNav()}
+                <main class="max-w-6xl mx-auto px-4 py-6 pb-24 min-h-screen">
+                    ${views[this.currentView] ? views[this.currentView]() : views.home()}
+                </main>
+                ${this.showContinueModal ? this.renderContinueModal() : ''}
+            `;
+            
+            this.attachGlobalListeners();
+        } catch (err) {
+            console.error('Render error:', err);
+            this.container.innerHTML = `
+                <div class="flex items-center justify-center min-h-screen text-red-600">
+                    <div class="text-center">
+                        <div class="text-4xl mb-4">⚠️</div>
+                        <p class="text-lg">渲染出错：${err.message}</p>
+                        <button onclick="location.reload()" class="mt-4 px-4 py-2 bg-slate-900 text-white rounded-lg">刷新页面</button>
+                    </div>
+                </div>
+            `;
+        }
+    }
+    
+    renderNav() {
+        const score = this.data.stats.totalScore;
+        const mastered = this.data.stats.mastered;
+        const reviewCount = this.getDueReviews().length;
+        
+        return `
+            <nav class="bg-slate-900 text-white sticky top-0 z-50 shadow-lg">
+                <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+                    <div class="flex items-center gap-3 cursor-pointer" onclick="app.navigate('home')">
+                        <div class="w-10 h-10 bg-amber-500 rounded-lg flex items-center justify-center text-slate-900 font-bold text-xl">A</div>
+                        <div>
+                            <h1 class="font-bold text-lg leading-tight">学术词汇系统</h1>
+                            <p class="text-xs text-slate-400 font-en">Academic Vocabulary Master</p>
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-center gap-4">
+                        <div class="hidden md:flex items-center gap-3 text-sm">
+                            <span class="bg-slate-800 px-3 py-1 rounded-full">
+                                <span class="text-amber-400 font-bold">${mastered}</span> <span class="text-slate-400">已掌握</span>
+                            </span>
+                            <span class="bg-slate-800 px-3 py-1 rounded-full">
+                                <span class="text-amber-400 font-bold">${score}</span> <span class="text-slate-400">总分</span>
+                            </span>
+                            ${reviewCount > 0 ? `
+                            <span class="bg-red-900/50 border border-red-500/30 px-3 py-1 rounded-full text-red-300 animate-pulse">
+                                ${reviewCount} 待复习
+                            </span>` : ''}
+                        </div>
+                        
+                        <div class="flex gap-1">
+                            <button onclick="app.navigate('home')" class="p-2 hover:bg-slate-800 rounded-lg transition ${this.currentView==='home'?'bg-slate-800':''}" title="首页">🏠</button>
+                            <button onclick="app.navigate('reading')" class="p-2 hover:bg-slate-800 rounded-lg transition ${this.currentView==='reading'?'bg-slate-800':''}" title="阅读">📖</button>
+                            <button onclick="app.navigate('review')" class="p-2 hover:bg-slate-800 rounded-lg transition ${this.currentView==='review'?'bg-slate-800':''}" title="复习">🔄</button>
+                            <button onclick="app.navigate('settings')" class="p-2 hover:bg-slate-800 rounded-lg transition ${this.currentView==='settings'?'bg-slate-800':''}" title="设置">⚙️</button>
+                        </div>
+                    </div>
+                </div>
+            </nav>
+        `;
+    }
+    
+    renderHome() {
+        const articles = this.data.articles;
+        const articleProgress = articles.map(a => {
+            const words = this.data.words.filter(w => w.articleId === a.id);
+            const mastered = words.filter(w => w.mastered).length;
+            const total = words.length;
+            const pct = total > 0 ? Math.round((mastered/total)*100) : 0;
+            return { ...a, mastered, total, pct };
+        });
+        
+        return `
+            <div class="fade-in space-y-8">
+                <div class="bg-gradient-to-r from-slate-900 to-slate-800 text-white rounded-2xl p-8 shadow-xl">
+                    <h2 class="text-3xl font-bold mb-3">考研英语一学术词汇系统</h2>
+                    <p class="text-slate-300 mb-6 max-w-2xl">
+                        基于真实学术文章的三遍循环过关机制。每词包含字根词缀、英英释义、中文释义、熟词僻义与真题例句。
+                        严格遵循记忆曲线复习，确保学术词汇深度掌握。
+                    </p>
+                    <div class="flex flex-wrap gap-3">
+                        <button onclick="app.showNewArticleModal()" class="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold px-6 py-3 rounded-lg transition flex items-center gap-2">
+                            <span>+</span> 新建学习列表
+                        </button>
+                        <button onclick="app.navigate('review')" class="bg-slate-700 hover:bg-slate-600 text-white px-6 py-3 rounded-lg transition">
+                            🔄 开始复习 (${this.getDueReviews().length})
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div class="bg-white rounded-xl p-5 shadow-sm border border-slate-100 text-center">
+                        <div class="text-3xl font-bold text-slate-900">${this.data.stats.mastered}</div>
+                        <div class="text-sm text-slate-500 mt-1">已掌握词汇</div>
+                    </div>
+                    <div class="bg-white rounded-xl p-5 shadow-sm border border-slate-100 text-center">
+                        <div class="text-3xl font-bold text-amber-600">${this.data.stats.totalScore}</div>
+                        <div class="text-sm text-slate-500 mt-1">总积分</div>
+                    </div>
+                    <div class="bg-white rounded-xl p-5 shadow-sm border border-slate-100 text-center">
+                        <div class="text-3xl font-bold text-blue-600">${articles.length}</div>
+                        <div class="text-sm text-slate-500 mt-1">文章总数</div>
+                    </div>
+                    <div class="bg-white rounded-xl p-5 shadow-sm border border-slate-100 text-center">
+                        <div class="text-3xl font-bold text-red-500">${this.getDueReviews().length}</div>
+                        <div class="text-sm text-slate-500 mt-1">今日待复习</div>
+                    </div>
+                </div>
+                
+                <div>
+                    <h3 class="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
+                        <span class="w-1.5 h-6 bg-amber-500 rounded-full"></span>
+                        学术文章库 <span class="text-sm font-normal text-slate-500">(${articles.length} 篇)</span>
+                    </h3>
+                    <div class="grid md:grid-cols-2 gap-4">
+                        ${articleProgress.map(a => `
+                            <div class="academic-card rounded-xl p-5 relative overflow-hidden group">
+                                <div class="flex justify-between items-start mb-3">
+                                    <div>
+                                        <h4 class="font-bold text-lg text-slate-900">${a.title}</h4>
+                                        <p class="text-xs text-slate-500 mt-1 font-en">${a.source}</p>
+                                    </div>
+                                    <span class="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded">${a.total} 词</span>
+                                </div>
+                                
+                                <div class="mb-4">
+                                    <div class="flex justify-between text-sm mb-1">
+                                        <span class="text-slate-600">学习进度</span>
+                                        <span class="font-bold text-slate-900">${a.pct}%</span>
+                                    </div>
+                                    <div class="w-full bg-slate-100 rounded-full h-2">
+                                        <div class="bg-gradient-to-r from-amber-400 to-amber-600 h-2 rounded-full transition-all" style="width:${a.pct}%"></div>
+                                    </div>
+                                </div>
+                                
+                                <div class="flex gap-2">
+                                    ${a.pct === 100 ? `
+                                        <button onclick="app.startStudy('${a.id}')" class="flex-1 bg-green-100 text-green-700 py-2 rounded-lg text-sm font-bold hover:bg-green-200 transition">
+                                            ✓ 已完成 — 重新学习
+                                        </button>
+                                    ` : a.pct === 0 ? `
+                                        <button onclick="app.startStudy('${a.id}')" class="flex-1 bg-slate-900 text-white py-2 rounded-lg text-sm font-bold hover:bg-slate-800 transition">
+                                            开始学习
+                                        </button>
+                                    ` : `
+                                        <button onclick="app.startStudy('${a.id}')" class="flex-1 bg-amber-100 text-amber-800 py-2 rounded-lg text-sm font-bold hover:bg-amber-200 transition">
+                                            继续学习 (${a.mastered}/${a.total})
+                                        </button>
+                                    `}
+                                    <button onclick="app.readArticle('${a.id}')" class="px-3 py-2 bg-slate-100 text-slate-600 rounded-lg text-sm hover:bg-slate-200 transition" title="阅读原文">
+                                        📖
+                                    </button>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            </div>
+            
+            ${this.newArticleModalOpen ? this.renderNewArticleModal() : ''}
+        `;
+    }
+    
+    renderStudy() {
+        if (!this.studyState || this.studyState.articleId !== this.currentArticleId) {
+            this.initStudyState(this.currentArticleId);
+        }
+        
+        const state = this.studyState;
+        const article = this.data.articles.find(a => a.id === state.articleId);
+        const cycleNames = ['', '第一循环：认知建立', '第二循环：由义及形', '第三循环：由形及义'];
+        const cycleColors = ['', 'cycle-1', 'cycle-2', 'cycle-3'];
+        
+        const queue = state.queue || [];
+        const currentWordId = queue[0];
+        
+        if (!currentWordId && queue.length === 0) {
+            if (state.cycle < 3) {
+                this.advanceCycle();
+                return this.renderStudy();
+            } else {
+                this.completeList();
+                return '';
+            }
+        }
+        
+        const word = this.data.words.find(w => w.id === currentWordId);
+        const progress = state.initialQueueLength > 0 
+            ? Math.round(((state.initialQueueLength - queue.length) / state.initialQueueLength) * 100) 
+            : 0;
+        
+        let content = '';
+        
+        if (state.mode === 'learning') {
+            content = this.renderLearningCard(word, state.cycle);
+        } else {
+            content = this.renderTestCard(word, state.cycle, article);
+        }
+        
+        return `
+            <div class="fade-in max-w-3xl mx-auto">
+                <div class="mb-6 flex items-center justify-between">
+                    <div>
+                        <button onclick="app.quitStudy()" class="text-sm text-slate-500 hover:text-slate-900 mb-1 flex items-center gap-1">
+                            ← 退出并保存
+                        </button>
+                        <h2 class="text-xl font-bold text-slate-900">${article.title}</h2>
+                    </div>
+                    <div class="text-right">
+                        <div class="inline-block px-3 py-1 rounded-full text-sm font-bold ${cycleColors[state.cycle]} mb-1">
+                            ${cycleNames[state.cycle]}
+                        </div>
+                        <div class="text-sm text-slate-500">剩余 ${queue.length} / ${state.initialQueueLength}</div>
+                    </div>
+                </div>
+                
+                <div class="w-full bg-slate-200 rounded-full h-3 mb-8 overflow-hidden">
+                    <div class="h-full bg-gradient-to-r from-blue-500 via-amber-500 to-red-500 transition-all duration-500" style="width:${progress}%"></div>
+                </div>
+                
+                ${content}
+            </div>
+        `;
+    }
+    
+    renderLearningCard(word, cycle) {
+        const isCycle1 = cycle === 1;
+        const isCycle2 = cycle === 2;
+        const isCycle3 = cycle === 3;
+        
+        return `
+            <div class="bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden slide-up">
+                <div class="bg-slate-900 text-white p-8 text-center">
+                    ${isCycle2 ? `
+                        <div class="text-slate-400 text-sm mb-2">根据释义回想单词...</div>
+                        <div class="text-3xl md:text-4xl font-en font-bold text-amber-400 mb-3">${word.englishDef}</div>
+                        <button onclick="app.toggleHint()" class="text-sm text-slate-400 hover:text-white underline mt-2">
+                            ${this.studyState.showHint ? '隐藏中文提示' : '显示中文提示'}
+                        </button>
+                        ${this.studyState.showHint ? `<div class="mt-3 text-slate-300 text-lg">${word.chineseDef}</div>` : ''}
+                        <div class="mt-4 text-5xl opacity-20">?</div>
+                    ` : isCycle3 ? `
+                        <div class="text-slate-400 text-sm mb-2">请回想该词的完整释义...</div>
+                        <div class="text-5xl md:text-6xl font-en font-bold text-white mb-2">${word.word}</div>
+                        <button onclick="app.toggleHint()" class="text-sm text-slate-400 hover:text-white underline mt-2">
+                            ${this.studyState.showHint ? '隐藏提示' : '显示提示（词根）'}
+                        </button>
+                        ${this.studyState.showHint ? `<div class="mt-3 text-amber-400 text-lg">${word.root}</div>` : ''}
+                    ` : `
+                        <div class="text-sm text-amber-400 font-bold mb-2 tracking-widest">ACADEMIC VOCABULARY</div>
+                        <div class="text-5xl md:text-6xl font-en font-bold mb-4">${word.word}</div>
+                        <div class="text-xl text-slate-300 font-en italic">${word.englishDef}</div>
+                    `}
+                </div>
+                
+                ${isCycle1 ? `
+                <div class="p-6 md:p-8 space-y-5">
+                    <div class="root-badge rounded-lg p-4">
+                        <div class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Etymology / 字根词缀</div>
+                        <div class="text-slate-900 font-en text-lg">${word.root}</div>
+                    </div>
+                    
+                    <div class="grid md:grid-cols-2 gap-4">
+                        <div class="bg-blue-50 rounded-lg p-4 border border-blue-100">
+                            <div class="text-xs font-bold text-blue-600 uppercase tracking-wider mb-2">English Definition</div>
+                            <div class="text-slate-900 font-en leading-relaxed">${word.englishDef}</div>
+                        </div>
+                        <div class="bg-slate-50 rounded-lg p-4 border border-slate-200">
+                            <div class="text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">中文释义</div>
+                            <div class="text-slate-900 text-lg">${word.chineseDef}</div>
+                        </div>
+                    </div>
+                    
+                    ${word.obscureMeaning ? `
+                    <div class="obscure-tag rounded-lg p-4">
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="text-lg">⚠️</span>
+                            <span class="text-xs font-bold uppercase tracking-wider">熟词僻义 / Obscure Meaning</span>
+                        </div>
+                        <div class="text-sm">${word.obscureMeaning}</div>
+                    </div>
+                    ` : ''}
+                    
+                    <div class="bg-amber-50/50 rounded-lg p-5 border-l-4 border-amber-400">
+                        <div class="text-xs font-bold text-amber-700 uppercase tracking-wider mb-2">Authentic Example</div>
+                        <p class="text-slate-800 font-en italic leading-relaxed text-lg">"${word.exampleSentence}"</p>
+                    </div>
+                </div>
+                ` : `
+                <div class="p-6 text-center text-slate-500">
+                    <p class="mb-4">${isCycle2 ? '请尝试根据英文释义回忆单词，准备好后点击开始测试。' : '请尝试根据单词回忆完整释义，准备好后点击开始测试。'}</p>
+                </div>
+                `}
+                
+                <div class="p-6 border-t border-slate-100 bg-slate-50">
+                    <button onclick="app.startTest()" class="w-full btn-primary py-4 rounded-xl text-lg font-bold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition">
+                        开始测试 →
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+    
+    renderTestCard(word, cycle, article) {
+        const options = this.generateOptions(word, article);
+        const answered = this.studyState.lastAnswer;
+        const isCorrect = this.studyState.lastAnswerCorrect;
+        const queueLen = this.studyState.queue.length;
+        
+        return `
+            <div class="bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden slide-up">
+                <div class="bg-slate-900 text-white p-8 text-center">
+                    <div class="text-sm text-slate-400 mb-2">选择正确的中文释义</div>
+                    <div class="text-4xl md:text-5xl font-en font-bold mb-2">${word.word}</div>
+                    <div class="text-sm text-amber-400 font-en">${word.root}</div>
+                </div>
+                
+                <div class="p-6 md:p-8">
+                    <div class="grid gap-3">
+                        ${options.map((opt, i) => `
+                            <button 
+                                onclick="app.answerTest('${opt.replace(/'/g, "\\'")}', ${i})" 
+                                id="opt-${i}"
+                                class="option-btn w-full text-left p-4 rounded-xl text-lg transition-all ${answered ? (opt === word.chineseDef ? 'correct' : (this.studyState.selectedOption === opt ? 'wrong' : 'opacity-50')) : ''}"
+                                ${answered ? 'disabled' : ''}
+                            >
+                                <span class="inline-block w-8 h-8 rounded-full bg-slate-100 text-slate-600 text-center leading-8 mr-3 text-sm font-bold">${String.fromCharCode(65+i)}</span>
+                                ${opt}
+                            </button>
+                        `).join('')}
+                    </div>
+                    
+                    ${answered ? `
+                        <div class="mt-6 p-4 rounded-xl ${isCorrect ? 'bg-green-50 border border-green-200 text-green-800' : 'bg-red-50 border border-red-200 text-red-800'}">
+                            <div class="font-bold text-lg mb-1">${isCorrect ? '✓ 回答正确！' : '✗ 回答错误'}</div>
+                            <div class="text-sm ${isCorrect ? 'text-green-700' : 'text-red-700'}">
+                                ${isCorrect ? '该词已晋级到下一循环。' : `正确释义：${word.chineseDef}。该词将保留在当前循环末尾重新测试。`}
+                            </div>
+                            ${!isCorrect ? `
+                                <div class="mt-3 pt-3 border-t border-red-200/50 text-sm">
+                                    <div class="font-en italic mb-1">"${word.exampleSentence}"</div>
+                                    <div class="text-xs text-red-600/70">${word.obscureMeaning ? '僻义：' + word.obscureMeaning : ''}</div>
+                                </div>
+                            ` : ''}
+                        </div>
+                        
+                        <button onclick="app.nextWord()" class="w-full mt-4 btn-primary py-3 rounded-xl font-bold">
+                            ${queueLen > 1 ? '下一题 →' : (this.studyState.isReview ? '完成复习 →' : '完成循环 →')}
+                        </button>
+                    ` : ''}
+                </div>
+            </div>
+        `;
+    }
+    
+    generateOptions(word, article) {
+        const articleWords = this.data.words.filter(w => w.articleId === article.id);
+        const otherWords = articleWords.filter(w => w.id !== word.id);
+        const shuffled = shuffle(otherWords);
+        const distractors = shuffled.slice(0, 3).map(w => w.chineseDef);
+        
+        const finalDistractors = distractors.filter(d => d !== word.chineseDef);
+        while (finalDistractors.length < 3) {
+            const extra = shuffle(otherWords)[0];
+            if (extra && extra.chineseDef !== word.chineseDef) {
+                finalDistractors.push(extra.chineseDef);
+            } else {
+                finalDistractors.push('（其他释义）');
+            }
+        }
+        
+        return shuffle([word.chineseDef, ...finalDistractors.slice(0, 3)]);
+    }
+    
+    renderReading() {
+        const articleId = this.currentArticleId || this.data.articles[0]?.id;
+        const article = this.data.articles.find(a => a.id === articleId);
+        if (!article) return '<div class="text-center py-20 text-slate-500">暂无文章</div>';
+        
+        const wordMap = {};
+        this.data.words.filter(w => w.articleId === articleId).forEach(w => {
+            const base = w.word.toLowerCase();
+            wordMap[base] = w.id;
+            if (w.word.endsWith('s')) wordMap[base.slice(0, -1)] = w.id;
+            if (w.word.endsWith('ed')) wordMap[base.slice(0, -2)] = w.id;
+            if (w.word.endsWith('ing')) wordMap[base.slice(0, -3)] = w.id;
+        });
+        
+        const renderedContent = article.content.split(/\s+/).map(token => {
+            const clean = token.replace(/^[.,;:!?'"()[\]{}]+|[.,;:!?'"()[\]{}]+$/g, '');
+            const lower = clean.toLowerCase();
+            const wordId = wordMap[lower];
+            
+            if (wordId && clean.length > 2) {
+                return `<span class="reading-word font-en font-semibold text-slate-900" onclick="app.showWordPopup('${wordId}', this)">${token}</span>`;
+            }
+            return `<span class="font-en text-slate-700">${token}</span>`;
+        }).join(' ');
+        
+        return `
+            <div class="fade-in grid md:grid-cols-4 gap-6">
+                <div class="md:col-span-1 space-y-3">
+                    <h3 class="font-bold text-slate-900 mb-3">文章目录</h3>
+                    ${this.data.articles.map(a => `
+                        <button onclick="app.readArticle('${a.id}')" 
+                            class="w-full text-left p-3 rounded-lg text-sm transition ${a.id === articleId ? 'bg-slate-900 text-white' : 'bg-white hover:bg-slate-100 text-slate-700'}">
+                            <div class="font-bold truncate">${a.title}</div>
+                            <div class="text-xs ${a.id === articleId ? 'text-slate-400' : 'text-slate-500'} mt-1">${a.words.length} 词</div>
+                        </button>
+                    `).join('')}
+                </div>
+                
+                <div class="md:col-span-3">
+                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-8 md:p-10">
+                        <h2 class="text-2xl font-bold text-slate-900 mb-2">${article.title}</h2>
+                        <p class="text-sm text-slate-500 font-en mb-8 border-b border-slate-100 pb-4">${article.source}</p>
+                        
+                        <div class="prose prose-slate max-w-none leading-loose text-justify text-lg">
+                            ${renderedContent}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="word-popup" class="fixed inset-0 z-50 hidden" onclick="app.hideWordPopup(event)">
+                <div class="absolute inset-0 bg-black/30 backdrop-blur-sm"></div>
+                <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full max-w-lg px-4">
+                    <div id="word-popup-content" class="word-popover rounded-2xl shadow-2xl p-6 max-h-[80vh] overflow-y-auto">
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    showWordPopup(wordId, element) {
+        const word = this.data.words.find(w => w.id === wordId);
+        if (!word) return;
+        
+        const popup = document.getElementById('word-popup');
+        const content = document.getElementById('word-popup-content');
+        
+        content.innerHTML = `
+            <div class="flex justify-between items-start mb-4">
+                <div>
+                    <h3 class="text-3xl font-en font-bold text-slate-900">${word.word}</h3>
+                    <p class="text-sm text-slate-500 mt-1">${word.root}</p>
+                </div>
+                <button onclick="app.hideWordPopup()" class="text-slate-400 hover:text-slate-900 text-2xl">&times;</button>
+            </div>
+            
+            <div class="space-y-4">
+                <div class="bg-blue-50 rounded-lg p-4">
+                    <div class="text-xs font-bold text-blue-600 mb-1">ENGLISH</div>
+                    <div class="text-slate-900 font-en">${word.englishDef}</div>
+                </div>
+                
+                <div class="bg-slate-50 rounded-lg p-4">
+                    <div class="text-xs font-bold text-slate-600 mb-1">中文释义</div>
+                    <div class="text-slate-900">${word.chineseDef}</div>
+                </div>
+                
+                ${word.obscureMeaning ? `
+                <div class="obscure-tag rounded-lg p-3 text-sm">
+                    <span class="font-bold">熟词僻义：</span>${word.obscureMeaning}
+                </div>
+                ` : ''}
+                
+                <div class="bg-amber-50 rounded-lg p-4 border-l-4 border-amber-400">
+                    <div class="text-xs font-bold text-amber-700 mb-1">EXAMPLE</div>
+                    <p class="text-slate-800 font-en italic text-sm">"${word.exampleSentence}"</p>
+                </div>
+                
+                <div class="flex gap-3 pt-2">
+                    <button onclick="app.startStudy('${word.articleId}', '${word.id}')" class="flex-1 bg-slate-900 text-white py-3 rounded-lg font-bold hover:bg-slate-800 transition">
+                        去背诵这个单词 →
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        popup.classList.remove('hidden');
+    }
+    
+    hideWordPopup(event) {
+        if (!event || event.target === event.currentTarget) {
+            const popup = document.getElementById('word-popup');
+            if (popup) popup.classList.add('hidden');
+        }
+    }
+    
+    renderReview() {
+        const reviews = this.getDueReviews();
+        
+        const urgent = reviews.filter(r => r.daysOverdue > 0).sort((a,b) => b.daysOverdue - a.daysOverdue);
+        const dueToday = reviews.filter(r => r.daysOverdue === 0);
+        const upcoming = reviews.filter(r => r.daysOverdue < 0).sort((a,b) => a.daysOverdue - b.daysOverdue);
+        
+        const renderList = (items, title, colorClass) => items.length ? `
+            <div class="mb-6">
+                <h4 class="font-bold text-slate-900 mb-3 flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full ${colorClass}"></span>
+                    ${title} (${items.length})
+                </h4>
+                <div class="grid gap-2">
+                    ${items.map(r => `
+                        <div class="bg-white rounded-lg p-4 shadow-sm border border-slate-200 flex items-center justify-between ${r.daysOverdue > 2 ? 'urgency-high' : r.daysOverdue >= 0 ? 'urgency-medium' : 'urgency-low'}">
+                            <div>
+                                <div class="flex items-center gap-3">
+                                    <span class="font-en font-bold text-lg text-slate-900">${r.word.word}</span>
+                                    <span class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded">${r.word.chineseDef}</span>
+                                </div>
+                                <div class="text-xs text-slate-500 mt-1">
+                                    来自：${this.data.articles.find(a => a.id === r.word.articleId)?.title || '未知'} · 
+                                    阶段 ${r.word.reviewStage}/5 · 
+                                    ${r.daysOverdue > 0 ? `逾期 ${r.daysOverdue} 天` : r.daysOverdue === 0 ? '今日到期' : `还有 ${Math.abs(r.daysOverdue)} 天`}
+                                </div>
+                            </div>
+                            <button onclick="app.startReview('${r.word.id}')" class="px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-bold hover:bg-slate-800 transition">
+                                复习
+                            </button>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        ` : '';
+        
+        return `
+            <div class="fade-in max-w-4xl mx-auto">
+                <h2 class="text-2xl font-bold text-slate-900 mb-6">📅 复习中心</h2>
+                
+                ${reviews.length === 0 ? `
+                    <div class="bg-white rounded-2xl p-12 text-center shadow-sm border border-slate-200">
+                        <div class="text-6xl mb-4">🎉</div>
+                        <h3 class="text-xl font-bold text-slate-900 mb-2">暂无待复习内容</h3>
+                        <p class="text-slate-500">所有已掌握的单词都在记忆曲线的安全区内。去学习新文章吧！</p>
+                    </div>
+                ` : `
+                    ${renderList(urgent, '紧急逾期', 'bg-red-500')}
+                    ${renderList(dueToday, '今日到期', 'bg-amber-500')}
+                    ${renderList(upcoming, '即将到期', 'bg-green-500')}
+                `}
+            </div>
+        `;
+    }
+    
+    getDueReviews() {
+        const today = new Date();
+        return this.data.words
+            .filter(w => w.mastered && w.nextReview)
+            .map(w => {
+                const due = new Date(w.nextReview);
+                const daysOverdue = daysDiff(today, due);
+                return { word: w, daysOverdue };
+            })
+            .filter(r => r.daysOverdue >= -3);
+    }
+    
+    renderSettings() {
+        return `
+            <div class="fade-in max-w-2xl mx-auto space-y-6">
+                <h2 class="text-2xl font-bold text-slate-900">⚙️ 系统设置</h2>
+                
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                    <h3 class="font-bold text-slate-900 mb-4">DeepSeek API 配置</h3>
+                    <p class="text-sm text-slate-500 mb-4">
+                        配置 API Key 后，您可以通过粘贴英文文章自动提取学术词汇列表。
+                        <span class="text-amber-600">注意：浏览器直接调用 API 可能受 CORS 限制，如遇问题请使用代理或手动导入。</span>
+                    </p>
+                    <div class="space-y-3">
+                        <div>
+                            <label class="block text-sm font-bold text-slate-700 mb-1">API Key</label>
+                            <input type="password" id="api-key" value="${this.data.settings.apiKey}" 
+                                class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none font-en"
+                                placeholder="sk-...">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-slate-700 mb-1">模型</label>
+                            <select id="api-model" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none">
+                                <option value="deepseek-chat" ${this.data.settings.apiModel==='deepseek-chat'?'selected':''}>deepseek-chat</option>
+                                <option value="deepseek-reasoner" ${this.data.settings.apiModel==='deepseek-reasoner'?'selected':''}>deepseek-reasoner</option>
+                            </select>
+                        </div>
+                        <button onclick="app.saveApiSettings()" class="bg-slate-900 text-white px-6 py-2 rounded-lg font-bold hover:bg-slate-800 transition">
+                            保存配置
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                    <h3 class="font-bold text-slate-900 mb-4">💾 数据管理</h3>
+                    <div class="grid md:grid-cols-2 gap-4">
+                        <button onclick="app.exportData()" class="p-4 border-2 border-dashed border-slate-300 rounded-xl hover:border-amber-500 hover:bg-amber-50 transition text-center">
+                            <div class="text-2xl mb-2">⬇️</div>
+                            <div class="font-bold text-slate-900">导出备份</div>
+                            <div class="text-xs text-slate-500 mt-1">JSON 格式</div>
+                        </button>
+                        
+                        <label class="p-4 border-2 border-dashed border-slate-300 rounded-xl hover:border-amber-500 hover:bg-amber-50 transition text-center cursor-pointer block">
+                            <div class="text-2xl mb-2">⬆️</div>
+                            <div class="font-bold text-slate-900">导入备份</div>
+                            <div class="text-xs text-slate-500 mt-1">选择 JSON 文件</div>
+                            <input type="file" accept=".json" class="hidden" onchange="app.importData(this)">
+                        </label>
+                    </div>
+                </div>
+                
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                    <h3 class="font-bold text-slate-900 mb-4">⚠️ 危险区域</h3>
+                    <button onclick="app.resetAll()" class="w-full border border-red-200 text-red-600 py-3 rounded-lg hover:bg-red-50 transition font-bold">
+                        重置所有学习进度
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+    
+    renderVictory() {
+        const enc = this.studyState?.encouragement || CONFIG.ENCOURAGEMENTS[0];
+        const article = this.data.articles.find(a => a.id === this.studyState?.articleId);
+        const wordCount = this.data.words.filter(w => w.articleId === article?.id).length;
+        
+        setTimeout(() => this.fireConfetti(), 100);
+        
+        return `
+            <div class="fade-in max-w-2xl mx-auto text-center pt-10">
+                <div class="text-8xl mb-6">🏆</div>
+                <h2 class="text-4xl font-bold text-slate-900 mb-4">List Mastered!</h2>
+                <p class="text-xl text-amber-600 font-en italic mb-8">"${enc}"</p>
+                
+                <div class="bg-white rounded-2xl shadow-lg border border-slate-200 p-8 mb-8">
+                    <div class="grid grid-cols-3 gap-6 mb-6">
+                        <div>
+                            <div class="text-3xl font-bold text-slate-900">${wordCount}</div>
+                            <div class="text-sm text-slate-500">掌握单词</div>
+                        </div>
+                        <div>
+                            <div class="text-3xl font-bold text-amber-600">+${wordCount * 3}</div>
+                            <div class="text-sm text-slate-500">获得积分</div>
+                        </div>
+                        <div>
+                            <div class="text-3xl font-bold text-blue-600">${Math.round((this.studyState?.duration || 0) / 60)}</div>
+                            <div class="text-sm text-slate-500">用时(分)</div>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-slate-50 rounded-xl p-4 text-left">
+                        <div class="text-sm font-bold text-slate-700 mb-2">来自文章</div>
+                        <div class="text-slate-900">${article?.title || '未知文章'}</div>
+                        <div class="text-xs text-slate-500 mt-1 font-en">${article?.source || ''}</div>
+                    </div>
+                </div>
+                
+                <div class="flex gap-4 justify-center">
+                    <button onclick="app.navigate('home')" class="px-8 py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 transition">
+                        返回首页
+                    </button>
+                    <button onclick="app.navigate('review')" class="px-8 py-3 bg-amber-500 text-slate-900 rounded-xl font-bold hover:bg-amber-600 transition">
+                        去复习
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+    
+    fireConfetti() {
+        const colors = ['#d4af37', '#1e3a5f', '#c41e3a', '#059669', '#7c3aed'];
+        for (let i = 0; i < 50; i++) {
+            const el = document.createElement('div');
+            el.className = 'confetti-piece';
+            el.style.left = Math.random() * 100 + 'vw';
+            el.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+            el.style.animationDuration = (Math.random() * 2 + 2) + 's';
+            el.style.animationDelay = (Math.random() * 0.5) + 's';
+            document.body.appendChild(el);
+            setTimeout(() => el.remove(), 4500);
+        }
+    }
+    
+    renderNewArticleModal() {
+        return `
+            <div class="fixed inset-0 z-50 flex items-center justify-center p-4" onclick="app.closeNewArticleModal(event)">
+                <div class="absolute inset-0 bg-black/50 backdrop-blur-sm"></div>
+                <div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto relative z-10 slide-up">
+                    <div class="p-6 border-b border-slate-100 flex justify-between items-center">
+                        <h3 class="text-xl font-bold text-slate-900">新建学习列表</h3>
+                        <button onclick="app.closeNewArticleModal()" class="text-2xl text-slate-400 hover:text-slate-900">&times;</button>
+                    </div>
+                    
+                    <div class="p-6 space-y-4">
+                        <div>
+                            <label class="block text-sm font-bold text-slate-700 mb-1">文章标题</label>
+                            <input type="text" id="new-article-title" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none" placeholder="输入文章标题...">
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-bold text-slate-700 mb-1">文章来源</label>
+                            <input type="text" id="new-article-source" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none" placeholder="期刊名或出处...">
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-bold text-slate-700 mb-1">英文原文</label>
+                            <textarea id="new-article-text" rows="8" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none font-en text-sm" placeholder="粘贴英文学术文章原文..."></textarea>
+                            <p class="text-xs text-slate-500 mt-1">建议 300-800 词的真实学术文本</p>
+                        </div>
+                        
+                        <div class="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                            <div class="text-sm font-bold text-amber-800 mb-1">💡 提示</div>
+                            <div class="text-xs text-amber-700">
+                                系统将调用 DeepSeek API 自动提取 30-40 个核心学术词汇并生成四要素解析。
+                                请先在设置中配置 API Key。如果 API 调用失败，您可以手动粘贴 JSON 格式的单词列表。
+                            </div>
+                        </div>
+                        
+                        <div id="api-error" class="hidden bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700"></div>
+                    </div>
+                    
+                    <div class="p-6 border-t border-slate-100 flex gap-3">
+                        <button onclick="app.analyzeWithAPI()" class="flex-1 bg-slate-900 text-white py-3 rounded-xl font-bold hover:bg-slate-800 transition flex items-center justify-center gap-2">
+                            <span>🤖</span> DeepSeek 自动分析
+                        </button>
+                        <button onclick="app.manualImport()" class="px-4 py-3 border-2 border-slate-300 text-slate-700 rounded-xl font-bold hover:border-slate-900 hover:text-slate-900 transition">
+                            手动导入
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    renderContinueModal() {
+        const state = this.studyState;
+        const article = this.data.articles.find(a => a.id === state.articleId);
+        const cycleNames = ['', '第一循环', '第二循环', '第三循环'];
+        
+        return `
+            <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
+                <div class="absolute inset-0 bg-black/50 backdrop-blur-sm"></div>
+                <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md relative z-10 slide-up p-6">
+                    <h3 class="text-xl font-bold text-slate-900 mb-2">检测到未完成的进度</h3>
+                    <p class="text-slate-600 mb-6">
+                        您正在学习 <span class="font-bold text-slate-900">${article?.title || '未知文章'}</span>，
+                        目前处于 <span class="font-bold text-amber-600">${cycleNames[state.cycle] || '未知'}</span>。
+                        是否继续？
+                    </p>
+                    
+                    <div class="flex gap-3">
+                        <button onclick="app.resumeStudy()" class="flex-1 bg-amber-500 text-slate-900 py-3 rounded-xl font-bold hover:bg-amber-600 transition">
+                            继续学习
+                        </button>
+                        <button onclick="app.abandonStudy()" class="flex-1 border-2 border-slate-300 text-slate-700 py-3 rounded-xl font-bold hover:border-slate-900 transition">
+                            放弃进度
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    navigate(view) {
+        this.currentView = view;
+        this.render();
+    }
+    
+    startStudy(articleId, jumpToWordId = null) {
+        this.currentArticleId = articleId;
+        this.showContinueModal = false;
+        
+        const words = this.data.words.filter(w => w.articleId === articleId);
+        const allMastered = words.length > 0 && words.every(w => w.mastered);
+        
+        if (allMastered) {
+            words.forEach(w => {
+                w.mastered = false;
+                w.cycle = 0;
+                w.reviewStage = 0;
+                w.nextReview = null;
+                w.wrongCount = 0;
+            });
+            this.data.stats.mastered -= words.length;
+            this.data.stats.totalScore -= words.length * 3;
+        }
+        
+        this.initStudyState(articleId, jumpToWordId);
+        this.currentView = 'study';
+        this.render();
+    }
+    
+    initStudyState(articleId, jumpToWordId = null) {
+        const words = this.data.words.filter(w => w.articleId === articleId && !w.mastered);
+        let queue = words.map(w => w.id);
+        
+        if (jumpToWordId && queue.includes(jumpToWordId)) {
+            queue = queue.filter(id => id !== jumpToWordId);
+            queue.unshift(jumpToWordId);
+        } else {
+            queue = shuffle(queue);
+        }
+        
+        this.studyState = {
+            articleId,
+            cycle: 1,
+            queue,
+            initialQueueLength: queue.length,
+            mode: 'learning',
+            currentWordId: queue[0],
+            showHint: false,
+            lastAnswer: null,
+            lastAnswerCorrect: false,
+            selectedOption: null,
+            startTime: Date.now(),
+            encouragement: shuffle([...CONFIG.ENCOURAGEMENTS])[0],
+            isReview: false
+        };
+        
+        this.data.studyState = this.studyState;
+        StorageManager.save(this.data);
+    }
+    
+    resumeStudy() {
+        this.showContinueModal = false;
+        this.currentArticleId = this.studyState.articleId;
+        this.currentView = 'study';
+        this.render();
+    }
+    
+    abandonStudy() {
+        this.studyState = null;
+        this.data.studyState = null;
+        StorageManager.save(this.data);
+        this.showContinueModal = false;
+        this.render();
+    }
+    
+    quitStudy() {
+        this.data.studyState = this.studyState;
+        StorageManager.save(this.data);
+        this.currentView = 'home';
+        this.render();
+    }
+    
+    toggleHint() {
+        this.studyState.showHint = !this.studyState.showHint;
+        this.render();
+    }
+    
+    startTest() {
+        this.studyState.mode = 'testing';
+        this.studyState.showHint = false;
+        this.studyState.lastAnswer = null;
+        this.studyState.selectedOption = null;
+        this.render();
+    }
+    
+    answerTest(selectedOpt, index) {
+        if (this.studyState.lastAnswer !== null) return;
+        
+        const state = this.studyState;
+        const word = this.data.words.find(w => w.id === state.queue[0]);
+        const isCorrect = selectedOpt === word.chineseDef;
+        
+        state.lastAnswer = selectedOpt;
+        state.lastAnswerCorrect = isCorrect;
+        state.selectedOption = selectedOpt;
+        
+        if (state.isReview) {
+            if (isCorrect) {
+                state.queue.shift();
+                word.reviewStage = Math.min(word.reviewStage + 1, 5);
+                word.nextReview = this.calcNextReview(word.reviewStage);
+            } else {
+                word.wrongCount++;
+                const failed = state.queue.shift();
+                state.queue.push(failed);
+                word.reviewStage = 0;
+                word.nextReview = this.calcNextReview(0);
+            }
+            StorageManager.save(this.data);
+            this.render();
+            return;
+        }
+        
+        if (isCorrect) {
+            state.queue.shift();
+            
+            if (state.cycle === 3) {
+                word.mastered = true;
+                word.cycle = 3;
+                word.nextReview = this.calcNextReview(0);
+                this.data.stats.mastered++;
+                this.data.stats.totalScore += 3;
+            } else {
+                word.cycle = state.cycle;
+            }
+        } else {
+            word.wrongCount++;
+            const failed = state.queue.shift();
+            state.queue.push(failed);
+        }
+        
+        StorageManager.save(this.data);
+        this.render();
+    }
+    
+    nextWord() {
+        const state = this.studyState;
+        
+        if (state.queue.length === 0) {
+            if (state.isReview) {
+                this.data.studyState = null;
+                this.studyState = null;
+                StorageManager.save(this.data);
+                this.currentView = 'review';
+                this.render();
+                return;
+            }
+            
+            if (state.cycle < 3) {
+                this.advanceCycle();
+            } else {
+                this.completeList();
+                return;
+            }
+        } else {
+            state.mode = 'learning';
+            state.showHint = false;
+            state.lastAnswer = null;
+            state.lastAnswerCorrect = false;
+            state.selectedOption = null;
+        }
+        
+        this.data.studyState = this.studyState;
+        StorageManager.save(this.data);
+        this.render();
+    }
+    
+    advanceCycle() {
+        const state = this.studyState;
+        state.cycle++;
+        
+        const words = this.data.words.filter(w => w.articleId === state.articleId && !w.mastered);
+        state.queue = shuffle(words.map(w => w.id));
+        state.initialQueueLength = state.queue.length;
+        state.mode = 'learning';
+        state.showHint = false;
+        state.lastAnswer = null;
+        state.lastAnswerCorrect = false;
+    }
+    
+    completeList() {
+        const state = this.studyState;
+        state.duration = Math.floor((Date.now() - state.startTime) / 1000);
+        this.data.studyState = null;
+        this.studyState = null;
+        StorageManager.save(this.data);
+        this.currentView = 'victory';
+        this.render();
+    }
+    
+    calcNextReview(stage) {
+        const days = CONFIG.REVIEW_INTERVALS[stage] || 15;
+        const d = new Date();
+        d.setDate(d.getDate() + days);
+        return d.toISOString();
+    }
+    
+    readArticle(articleId) {
+        this.currentArticleId = articleId;
+        this.currentView = 'reading';
+        this.render();
+    }
+    
+    startReview(wordId) {
+        const word = this.data.words.find(w => w.id === wordId);
+        if (!word) return;
+        
+        this.studyState = {
+            articleId: word.articleId,
+            cycle: 3,
+            queue: [wordId],
+            initialQueueLength: 1,
+            mode: 'testing',
+            isReview: true,
+            showHint: false,
+            lastAnswer: null,
+            lastAnswerCorrect: false,
+            selectedOption: null
+        };
+        
+        this.currentArticleId = word.articleId;
+        this.currentView = 'study';
+        this.render();
+    }
+    
+    showNewArticleModal() {
+        this.newArticleModalOpen = true;
+        this.render();
+    }
+    
+    closeNewArticleModal(event) {
+        if (!event || event.target === event.currentTarget) {
+            this.newArticleModalOpen = false;
+            this.render();
+        }
+    }
+    
+    saveApiSettings() {
+        const key = document.getElementById('api-key').value.trim();
+        const model = document.getElementById('api-model').value;
+        this.data.settings = { apiKey: key, apiModel: model };
+        StorageManager.save(this.data);
+        alert('设置已保存');
+    }
+    
+    exportData() {
+        StorageManager.exportData();
+    }
+    
+    importData(input) {
+        const file = input.files[0];
+        if (!file) return;
+        
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                StorageManager.importData(e.target.result);
+                this.data = StorageManager.load();
+                alert('导入成功！');
+                this.navigate('home');
+            } catch(err) {
+                alert('导入失败: ' + err.message);
+            }
+        };
+        reader.readAsText(file);
+    }
+    
+    resetAll() {
+        if (!confirm('确定要重置所有学习进度吗？此操作不可恢复。')) return;
+        localStorage.removeItem(CONFIG.STORAGE_KEY);
+        this.data = StorageManager.initDefault();
+        this.studyState = null;
+        this.render();
+    }
+    
+    async analyzeWithAPI() {
+        const title = document.getElementById('new-article-title').value.trim();
+        const source = document.getElementById('new-article-source').value.trim();
+        const text = document.getElementById('new-article-text').value.trim();
+        const errorEl = document.getElementById('api-error');
+        
+        if (!title || !text) {
+            errorEl.textContent = '请填写标题和原文';
+            errorEl.classList.remove('hidden');
+            return;
+        }
+        
+        if (!this.data.settings.apiKey) {
+            errorEl.textContent = '请先在设置中配置 DeepSeek API Key';
+            errorEl.classList.remove('hidden');
+            return;
+        }
+        
+        errorEl.classList.add('hidden');
+        const btn = event.target;
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '<span class="animate-spin">⏳</span> 分析中...';
+        btn.disabled = true;
+        
+        try {
+            const prompt = `Analyze the following academic text and extract 30-40 core vocabulary words suitable for postgraduate entrance exam (考研英语一) level. 
+For each word, provide JSON with: word, root (etymology breakdown), englishDef (English definition, academic and precise), chineseDef (Chinese definition), obscureMeaning (less common meanings if any, otherwise empty string), exampleSentence (authentic sentence from the text or in academic style).
+Prioritize: academic high-frequency words, words with obvious roots/affixes, and words with obscure meanings.
+Return format: pure JSON array without markdown code blocks.
+Text: ${text}`;
+            
+            const response = await fetch(CONFIG.API_ENDPOINT, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${this.data.settings.apiKey}`
+                },
+                body: JSON.stringify({
+                    model: this.data.settings.apiModel,
+                    messages: [
+                        {role: 'system', content: 'You are an academic vocabulary extraction engine. Return only valid JSON array.'},
+                        {role: 'user', content: prompt}
+                    ],
+                    temperature: 0.3
+                })
+            });
+            
+            if (!response.ok) throw new Error(`API error: ${response.status}`);
+            
+            const result = await response.json();
+            let content = result.choices[0].message.content;
+            
+            content = content.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();
+            const words = JSON.parse(content);
+            
+            if (!Array.isArray(words) || words.length < 5) throw new Error('Invalid word data');
+            
+            this.createArticleFromData(title, source, text, words);
+            
+        } catch(err) {
+            console.error(err);
+            errorEl.textContent = 'API 调用失败: ' + err.message + '。请检查 API Key 和网络，或尝试手动导入。';
+            errorEl.classList.remove('hidden');
+        } finally {
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }
+    }
+    
+    createArticleFromData(title, source, text, wordsData) {
+        const id = 'custom_' + generateId();
+        const article = {
+            id,
+            title,
+            source: source || 'User uploaded text',
+            dateAdded: todayStr(),
+            content: text,
+            words: wordsData.map((wd, i) => ({
+                id: `${id}_w${i}`,
+                word: wd.word,
+                root: wd.root || 'Unknown etymology',
+                englishDef: wd.englishDef || wd.english || '',
+                chineseDef: wd.chineseDef || wd.chinese || '',
+                obscureMeaning: wd.obscureMeaning || wd.obscure || '',
+                exampleSentence: wd.exampleSentence || wd.example || '',
+                cycle: 0, mastered: false, reviewStage: 0,
+                nextReview: null, wrongCount: 0, articleId: id
+            }))
+        };
+        
+        this.data.articles.push(article);
+        this.data.words.push(...article.words);
+        StorageManager.save(this.data);
+        
+        this.newArticleModalOpen = false;
+        this.currentView = 'home';
+        this.render();
+    }
+    
+    manualImport() {
+        const text = document.getElementById('new-article-text').value.trim();
+        const title = document.getElementById('new-article-title').value.trim();
+        const errorEl = document.getElementById('api-error');
+        
+        try {
+            const data = JSON.parse(text);
+            if (data.words && Array.isArray(data.words)) {
+                this.createArticleFromData(title, 'Manual import', text, data.words);
+            } else if (Array.isArray(data)) {
+                this.createArticleFromData(title, 'Manual import', text, data);
+            } else {
+                throw new Error('Format should be array of word objects');
+            }
+        } catch(e) {
+            errorEl.textContent = '手动导入失败: ' + e.message + '。请提供正确的 JSON 数组格式。';
+            errorEl.classList.remove('hidden');
+        }
+    }
+    
+    attachGlobalListeners() {
+        document.addEventListener('keydown', (e) => {
+            if (this.currentView === 'study' && this.studyState?.mode === 'testing') {
+                if (e.key >= '1' && e.key <= '4') {
+                    const idx = parseInt(e.key) - 1;
+                    const btn = document.getElementById(`opt-${idx}`);
+                    if (btn && !btn.disabled) btn.click();
+                }
+            }
+        });
+    }
+}
+
+const app = new AcademicVocabApp();
+</script>
+</body>
+</html>
